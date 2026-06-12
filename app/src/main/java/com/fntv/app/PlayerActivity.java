@@ -178,7 +178,7 @@ public class PlayerActivity extends AppCompatActivity {
             btnDanmu.setText("弹");
         }
 
-        findViewById(android.R.id.content).setOnClickListener(v -> showCtrl(true));
+        findViewById(android.R.id.content).setOnClickListener(v -> showCtrl(true, true));
         btnPlayPause.setOnClickListener(v -> togglePlay());
         seekStep = getSharedPreferences("fntv_prefs", MODE_PRIVATE).getInt("seek_step", 10) * 1000;
         btnRewind.setOnClickListener(v -> seekRel(-seekStep));
@@ -198,7 +198,7 @@ public class PlayerActivity extends AppCompatActivity {
                 controller.setVisibility(View.INVISIBLE);
                 btnLock.setVisibility(View.VISIBLE);
             } else {
-                showCtrl(true);
+                showCtrl(true, true);
             }
         });
         btnCloseInfo.setOnClickListener(v -> { infoPanel.setVisibility(View.GONE); infoVis = false; });
@@ -843,6 +843,10 @@ public class PlayerActivity extends AppCompatActivity {
     }
 
     private void showCtrl(boolean show) {
+        showCtrl(show, false);
+    }
+
+    private void showCtrl(boolean show, boolean requestDefaultFocus) {
         if (show && isLocked) {
             btnLock.setVisibility(View.VISIBLE);
             return;
@@ -854,24 +858,55 @@ public class PlayerActivity extends AppCompatActivity {
         btnDanmu.setVisibility(show ? View.VISIBLE : View.INVISIBLE);
         if (show) {
             updateTitle();
-            if (!controller.hasFocus() && !btnDanmu.hasFocus() && !btnLock.hasFocus() && !topBar.hasFocus()) {
+            if (requestDefaultFocus && !hasControllerFocus()) {
                 btnPlayPause.post(() -> btnPlayPause.requestFocus());
             }
             resetHideTimer();
+        } else {
+            handler.removeCallbacks(hideC);
+            clearControllerFocus();
+            hideSystemUi();
         }
-        else hideSystemUi();
     }
+
     private void resetHideTimer() {
+        if (!ctrlVis) return;
         handler.removeCallbacks(hideC);
         handler.postDelayed(hideC, 5000);
     }
+
     private final Runnable hideC = () -> {
-        if (controller.hasFocus() || btnDanmu.hasFocus() || btnLock.hasFocus() || btnCloudMode.hasFocus() || btnBrightness.hasFocus() || topBar.hasFocus()) {
+        if (infoVis || loadingEpisodes) {
             resetHideTimer();
             return;
         }
         showCtrl(false);
     };
+
+    private boolean hasControllerFocus() {
+        return controller.hasFocus() || topBar.hasFocus() || seekBar.hasFocus()
+                || btnDanmu.hasFocus() || btnLock.hasFocus() || btnCloudMode.hasFocus()
+                || (btnBrightness != null && btnBrightness.hasFocus());
+    }
+
+    private void clearControllerFocus() {
+        controller.clearFocus();
+        topBar.clearFocus();
+        seekBar.clearFocus();
+        btnPlayPause.clearFocus();
+        btnRewind.clearFocus();
+        btnForward.clearFocus();
+        btnSpeed.clearFocus();
+        btnRatio.clearFocus();
+        btnInfo.clearFocus();
+        btnEpisodeList.clearFocus();
+        btnNextEp.clearFocus();
+        btnBack.clearFocus();
+        btnDanmu.clearFocus();
+        btnLock.clearFocus();
+        btnCloudMode.clearFocus();
+        if (btnBrightness != null) btnBrightness.clearFocus();
+    }
 
     private void setCloudBtnVisible(boolean vis) {
         btnCloudMode.setVisibility(vis ? View.VISIBLE : View.GONE);
@@ -989,6 +1024,7 @@ public class PlayerActivity extends AppCompatActivity {
         btnDanmu.setOnFocusChangeListener(l);
         btnLock.setOnFocusChangeListener(l);
         btnCloudMode.setOnFocusChangeListener(l);
+        seekBar.setOnFocusChangeListener(l);
         if (btnBrightness != null) btnBrightness.setOnFocusChangeListener(l);
     };
 
@@ -1955,13 +1991,13 @@ public class PlayerActivity extends AppCompatActivity {
                 }
                 isLocked = false;
                 btnLock.setImageResource(R.drawable.ic_unlock);
-                showCtrl(true);
+                showCtrl(true, true);
                 return true;
             }
             if (k == KeyEvent.KEYCODE_DPAD_CENTER || k == KeyEvent.KEYCODE_ENTER) {
                 isLocked = false;
                 btnLock.setImageResource(R.drawable.ic_unlock);
-                showCtrl(true);
+                showCtrl(true, true);
                 return true;
             }
             return true;
@@ -1970,11 +2006,8 @@ public class PlayerActivity extends AppCompatActivity {
             switch (k) {
                 case KeyEvent.KEYCODE_BACK:
                     if (infoVis) { toggleInfo(); return true; }
-                    if (controller.hasFocus() || btnDanmu.hasFocus() || btnLock.hasFocus() || btnCloudMode.hasFocus() || btnBrightness.hasFocus() || topBar.hasFocus()) {
-                        controller.clearFocus();
-                        topBar.clearFocus();
-                        btnDanmu.clearFocus();
-                        btnLock.clearFocus();
+                    if (hasControllerFocus()) {
+                        showCtrl(false);
                         return true;
                     }
                     if (backPressedTime + 2000 > System.currentTimeMillis()) {
@@ -1987,6 +2020,7 @@ public class PlayerActivity extends AppCompatActivity {
                     return true;
                 // LEFT/RIGHT 由 SeekBar 自身处理（已设 keyProgressIncrement=5000）
                 case KeyEvent.KEYCODE_DPAD_CENTER: case KeyEvent.KEYCODE_ENTER:
+                    resetHideTimer();
                     if (seekBar.hasFocus() || btnRewind.hasFocus() || btnForward.hasFocus()
                             || btnSpeed.hasFocus() || btnRatio.hasFocus() || btnInfo.hasFocus()
                             || btnEpisodeList.hasFocus() || btnNextEp.hasFocus() || btnBrightness.hasFocus()) {
@@ -1994,14 +2028,17 @@ public class PlayerActivity extends AppCompatActivity {
                     }
                     togglePlay(); return true;
                 case KeyEvent.KEYCODE_DPAD_UP:
+                    resetHideTimer();
                     if (btnDanmu.hasFocus() || btnLock.hasFocus() || topBar.hasFocus()) {
                         showCtrl(false);
                         return true;
                     }
                     return super.onKeyDown(k, e);
                 case KeyEvent.KEYCODE_INFO: case KeyEvent.KEYCODE_MENU:
+                    resetHideTimer();
                     toggleInfo(); return true;
             }
+            resetHideTimer();
             return super.onKeyDown(k, e);
         } else {
             switch (k) {
@@ -2018,7 +2055,7 @@ public class PlayerActivity extends AppCompatActivity {
                 case KeyEvent.KEYCODE_DPAD_LEFT:
                 case KeyEvent.KEYCODE_DPAD_RIGHT:
                 case KeyEvent.KEYCODE_DPAD_UP:
-                    showCtrl(true); return true;
+                    showCtrl(true, true); return true;
                 case KeyEvent.KEYCODE_INFO: case KeyEvent.KEYCODE_MENU:
                     toggleInfo(); return true;
             }
