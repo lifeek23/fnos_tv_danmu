@@ -8,6 +8,8 @@ import android.util.Log;
 import android.widget.ImageView;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
@@ -25,41 +27,76 @@ public class SimpleImageLoader {
             return bitmap.getByteCount();
         }
     };
+    private static final Map<String, ImageSize> sizeCache = new ConcurrentHashMap<>();
+
+    public interface Callback {
+        void onLoaded(ImageView view, int width, int height);
+        void onFailed(ImageView view);
+    }
+
+    public static class ImageSize {
+        public final int width;
+        public final int height;
+
+        ImageSize(int width, int height) {
+            this.width = width;
+            this.height = height;
+        }
+    }
 
     /** 加载图片（使用 OkHttpClient，自动携带认证头） */
     public static void load(String url, ImageView view, OkHttpClient client) {
+        load(url, view, client, null);
+    }
+
+    /** 加载图片，并在成功后回传真实图片尺寸。 */
+    public static void load(String url, ImageView view, OkHttpClient client, Callback callback) {
         if (url == null || url.isEmpty()) {
             view.setImageBitmap(null);
             view.setBackgroundColor(0xFF333333);
+            if (callback != null) callback.onFailed(view);
             return;
         }
 
         Bitmap cached = cache.get(url);
         if (cached != null) {
             view.setImageBitmap(cached);
+            if (callback != null) callback.onLoaded(view, cached.getWidth(), cached.getHeight());
             return;
         }
 
         // Android 4.4 AsyncTask 默认串行，用线程池实现并行下载
-        new ImageLoadTask(view, client).executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, url);
+        new ImageLoadTask(view, client, callback).executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, url);
+    }
+
+    public static ImageSize getCachedSize(String url) {
+        if (url == null) return null;
+        Bitmap bitmap = cache.get(url);
+        if (bitmap != null) return new ImageSize(bitmap.getWidth(), bitmap.getHeight());
+        return sizeCache.get(url);
     }
 
     public static void clearCache() {
         cache.evictAll();
+        sizeCache.clear();
     }
 
     private static class ImageLoadTask extends AsyncTask<String, Void, Bitmap> {
         private final ImageView imageView;
         private final OkHttpClient client;
+        private final Callback callback;
+        private String url;
 
-        ImageLoadTask(ImageView imageView, OkHttpClient client) {
+        ImageLoadTask(ImageView imageView, OkHttpClient client, Callback callback) {
             this.imageView = imageView;
             this.client = client;
+            this.callback = callback;
         }
 
         @Override
         protected Bitmap doInBackground(String... params) {
             String urlStr = params[0];
+            url = urlStr;
             try {
                 Request request = new Request.Builder()
                         .url(urlStr)
@@ -95,6 +132,7 @@ public class SimpleImageLoader {
 
                 if (bitmap != null) {
                     cache.put(urlStr, bitmap);
+                    sizeCache.put(urlStr, new ImageSize(bitmap.getWidth(), bitmap.getHeight()));
                     Log.d(TAG, "OK (" + bitmap.getWidth() + "x" + bitmap.getHeight() + ")");
                 } else {
                     Log.e(TAG, "DECODE_FAILED");
@@ -110,8 +148,10 @@ public class SimpleImageLoader {
         protected void onPostExecute(Bitmap bitmap) {
             if (bitmap != null) {
                 imageView.setImageBitmap(bitmap);
+                if (callback != null) callback.onLoaded(imageView, bitmap.getWidth(), bitmap.getHeight());
             } else {
                 imageView.setBackgroundColor(0xFF444444);
+                if (callback != null) callback.onFailed(imageView);
             }
         }
     }

@@ -14,6 +14,7 @@ import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewParent;
 import android.widget.*;
 import androidx.appcompat.app.AppCompatActivity;
 import com.fntv.app.api.FnApiManager;
@@ -30,6 +31,21 @@ import retrofit2.Callback;
 import retrofit2.Response;
 
 public class HomeActivity extends AppCompatActivity {
+
+    private enum ArtworkRole {
+        DETAIL_POSTER,
+        DETAIL_STILL,
+        MEDIA_LIBRARY_COVER,
+        BROWSE_CARD,
+        WATCH_HISTORY,
+        EPISODE_STILL
+    }
+
+    private enum ArtworkShape {
+        LANDSCAPE,
+        PORTRAIT,
+        SQUARE_OR_UNKNOWN
+    }
 
     private Button tabMovies, tabLibrary, tabSettings;
     private View panelMovies, panelLibrary, panelSettings;
@@ -215,6 +231,7 @@ public class HomeActivity extends AppCompatActivity {
     /** 构建概览 */
     private void showOverview() {
         tvMoviesLoading.setVisibility(View.GONE);
+        setMoviesContentEdgeToEdge(false);
         moviesContainer.removeAllViews();
         showingOverview = true;
         currentContentMode = CONTENT_OVERVIEW;
@@ -433,8 +450,6 @@ public class HomeActivity extends AppCompatActivity {
                 ViewGroup.LayoutParams.MATCH_PARENT, landscape ? 160 : 280));
         poster.setScaleType(ImageView.ScaleType.CENTER_CROP);
         poster.setBackgroundColor(0xFF333333);
-        String imgUrl = makePosterUrl(record.poster);
-        if (imgUrl != null) { poster.setTag(imgUrl); }
         card.addView(poster);
 
         // 进度条
@@ -472,6 +487,25 @@ public class HomeActivity extends AppCompatActivity {
         title.setPadding(4, 0, 4, 0);
         title.setText(record.getDisplayTitle());
         card.addView(title);
+
+        if (isOptimizedUi()) {
+            loadArtwork(record.poster, poster, ArtworkRole.WATCH_HISTORY, new SimpleImageLoader.Callback() {
+                @Override
+                public void onLoaded(ImageView view, int width, int height) {
+                    ArtworkShape shape = resolveShape(ArtworkRole.WATCH_HISTORY, record.poster, width, height);
+                    card.post(() -> applyWatchCardShape(card, view, title, shape));
+                }
+
+                @Override
+                public void onFailed(ImageView view) {
+                    card.post(() -> applyWatchCardShape(card, view, title,
+                            defaultShapeForRole(ArtworkRole.WATCH_HISTORY, record.poster)));
+                }
+            });
+        } else {
+            String imgUrl = makePosterUrl(record.poster);
+            if (imgUrl != null) { poster.setTag(imgUrl); }
+        }
 
         // 跑马灯：一直滚动
         title.setSelected(true);
@@ -594,8 +628,6 @@ public class HomeActivity extends AppCompatActivity {
                 ViewGroup.LayoutParams.MATCH_PARENT, landscape ? 150 : 280));
         iv.setScaleType(ImageView.ScaleType.CENTER_CROP);
         iv.setBackgroundColor(0xFF333333);
-        String imgUrl = makePosterUrl(item.poster);
-        if (imgUrl != null) { iv.setTag(imgUrl); }
         card.addView(iv);
 
         // 底部文字条：类型 + 标题
@@ -627,6 +659,25 @@ public class HomeActivity extends AppCompatActivity {
         textBar.addView(title);
 
         card.addView(textBar);
+
+        if (isOptimizedUi()) {
+            loadArtwork(item.poster, iv, ArtworkRole.BROWSE_CARD, new SimpleImageLoader.Callback() {
+                @Override
+                public void onLoaded(ImageView view, int width, int height) {
+                    ArtworkShape shape = resolveShape(ArtworkRole.BROWSE_CARD, item.poster, width, height);
+                    card.post(() -> applyBrowseCardShape(card, view, textBar, shape));
+                }
+
+                @Override
+                public void onFailed(ImageView view) {
+                    card.post(() -> applyBrowseCardShape(card, view, textBar,
+                            defaultShapeForRole(ArtworkRole.BROWSE_CARD, item.poster)));
+                }
+            });
+        } else {
+            String imgUrl = makePosterUrl(item.poster);
+            if (imgUrl != null) { iv.setTag(imgUrl); }
+        }
 
         card.setOnFocusChangeListener(new View.OnFocusChangeListener() {
             @Override
@@ -701,7 +752,7 @@ public class HomeActivity extends AppCompatActivity {
 
     private boolean shouldUseLandscapeWatchCard(WatchRecord record) {
         if (record == null) return false;
-        return looksLandscapePoster(record.poster);
+        return true;
     }
 
     private int getItemCardWidth(PlayListItem item) {
@@ -716,6 +767,10 @@ public class HomeActivity extends AppCompatActivity {
 
     private boolean shouldUseLandscapeItemCard(PlayListItem item) {
         if (item == null) return false;
+        if ("TV".equals(item.type) || "Episode".equals(item.type)
+                || "Video".equals(item.type) || item.isFolder()) {
+            return true;
+        }
         return looksLandscapePoster(item.poster);
     }
 
@@ -727,11 +782,146 @@ public class HomeActivity extends AppCompatActivity {
                 || p.contains("landscape");
     }
 
+    private void applyWatchCardShape(View card, ImageView image, TextView title,
+                                     ArtworkShape shape) {
+        boolean landscape = isLandscapeShape(shape);
+        ViewGroup.LayoutParams cardLp = card.getLayoutParams();
+        if (cardLp != null) {
+            cardLp.width = landscape ? 330 : 220;
+            cardLp.height = landscape ? 250 : 380;
+            card.setLayoutParams(cardLp);
+            ViewParent parent = card.getParent();
+            if (parent instanceof View) {
+                ViewParent grandParent = ((View) parent).getParent();
+                if (grandParent instanceof HorizontalScrollView) {
+                    ViewGroup.LayoutParams scrollLp = ((View) grandParent).getLayoutParams();
+                    if (scrollLp != null && scrollLp.height > 0 && scrollLp.height < cardLp.height + 30) {
+                        scrollLp.height = cardLp.height + 30;
+                        ((View) grandParent).setLayoutParams(scrollLp);
+                    }
+                }
+            }
+        }
+        applyFrameSize(image, ViewGroup.LayoutParams.MATCH_PARENT, landscape ? 160 : 280);
+        applyImageScale(image, shape, ArtworkRole.WATCH_HISTORY);
+        applyFrameSize(title, ViewGroup.LayoutParams.MATCH_PARENT, 85);
+    }
+
+    private void applyBrowseCardShape(View card, ImageView image, LinearLayout textBar,
+                                      ArtworkShape shape) {
+        boolean landscape = isLandscapeShape(shape);
+        ViewGroup.LayoutParams cardLp = card.getLayoutParams();
+        if (cardLp != null) {
+            if (cardLp.width != 0) cardLp.width = landscape ? 330 : 220;
+            cardLp.height = landscape ? 250 : 380;
+            card.setLayoutParams(cardLp);
+            ViewParent parent = card.getParent();
+            if (parent instanceof View) {
+                ViewGroup.LayoutParams rowLp = ((View) parent).getLayoutParams();
+                if (rowLp != null && rowLp.height > 0 && rowLp.height < cardLp.height + 20) {
+                    rowLp.height = cardLp.height + 20;
+                    ((View) parent).setLayoutParams(rowLp);
+                }
+                ViewParent grandParent = ((View) parent).getParent();
+                if (grandParent instanceof HorizontalScrollView) {
+                    ViewGroup.LayoutParams scrollLp = ((View) grandParent).getLayoutParams();
+                    if (scrollLp != null && scrollLp.height > 0 && scrollLp.height < cardLp.height + 30) {
+                        scrollLp.height = cardLp.height + 30;
+                        ((View) grandParent).setLayoutParams(scrollLp);
+                    }
+                }
+            }
+        }
+        applyFrameSize(image, ViewGroup.LayoutParams.MATCH_PARENT, landscape ? 150 : 280);
+        applyImageScale(image, shape, ArtworkRole.BROWSE_CARD);
+        applyFrameSize(textBar, ViewGroup.LayoutParams.MATCH_PARENT, landscape ? 82 : 88);
+    }
+
+    private void applyLibraryCoverShape(ImageView cover, ArtworkShape shape) {
+        boolean landscape = isLandscapeShape(shape);
+        applyFrameSize(cover, landscape ? 140 : 76, landscape ? 80 : 108);
+        applyImageScale(cover, shape, ArtworkRole.MEDIA_LIBRARY_COVER);
+    }
+
+    private void applyEpisodeThumbShape(FrameLayout frame, ImageView image, ArtworkShape shape,
+                                        boolean wide) {
+        boolean landscape = isLandscapeShape(shape);
+        int frameW = dp(wide ? 260 : 240);
+        int frameH = dp(landscape ? (wide ? 146 : 135) : (wide ? 146 : 135));
+        applyFrameSize(frame, frameW, frameH);
+        applyImageScale(image, shape, ArtworkRole.EPISODE_STILL);
+    }
+
+    private ArtworkShape shapeFromSize(int width, int height) {
+        if (width <= 0 || height <= 0) return ArtworkShape.SQUARE_OR_UNKNOWN;
+        float ratio = width / (float) height;
+        if (ratio >= 1.18f) return ArtworkShape.LANDSCAPE;
+        if (ratio <= 0.85f) return ArtworkShape.PORTRAIT;
+        return ArtworkShape.SQUARE_OR_UNKNOWN;
+    }
+
+    private ArtworkShape defaultShapeForRole(ArtworkRole role, String path) {
+        if (role == ArtworkRole.DETAIL_POSTER) return ArtworkShape.PORTRAIT;
+        if (role == ArtworkRole.DETAIL_STILL
+                || role == ArtworkRole.MEDIA_LIBRARY_COVER
+                || role == ArtworkRole.WATCH_HISTORY
+                || role == ArtworkRole.EPISODE_STILL) {
+            return ArtworkShape.LANDSCAPE;
+        }
+        return looksLandscapePoster(path) ? ArtworkShape.LANDSCAPE : ArtworkShape.PORTRAIT;
+    }
+
+    private ArtworkShape resolveShape(ArtworkRole role, String path, int width, int height) {
+        ArtworkShape actual = shapeFromSize(width, height);
+        return actual == ArtworkShape.SQUARE_OR_UNKNOWN ? defaultShapeForRole(role, path) : actual;
+    }
+
+    private ArtworkShape resolveShapeFromCache(ArtworkRole role, String url, String path) {
+        SimpleImageLoader.ImageSize size = SimpleImageLoader.getCachedSize(url);
+        if (size != null) return resolveShape(role, path, size.width, size.height);
+        return defaultShapeForRole(role, path);
+    }
+
+    private boolean isLandscapeShape(ArtworkShape shape) {
+        return shape == ArtworkShape.LANDSCAPE || shape == ArtworkShape.SQUARE_OR_UNKNOWN;
+    }
+
+    private void loadArtwork(String path, ImageView view, ArtworkRole role,
+                             SimpleImageLoader.Callback callback) {
+        String url = makePosterUrl(path);
+        if (url != null) view.setTag(url);
+        if (url == null) {
+            if (callback != null) callback.onFailed(view);
+            return;
+        }
+        SimpleImageLoader.load(url, view, apiManager.getClient(), callback);
+    }
+
+    private void applyImageScale(ImageView view, ArtworkShape shape, ArtworkRole role) {
+        if (shape == ArtworkShape.PORTRAIT && role != ArtworkRole.DETAIL_POSTER) {
+            view.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        } else if (shape == ArtworkShape.SQUARE_OR_UNKNOWN) {
+            view.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        } else {
+            view.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        }
+    }
+
+    private void applyFrameSize(View frame, int width, int height) {
+        ViewGroup.LayoutParams lp = frame.getLayoutParams();
+        if (lp == null) return;
+        lp.width = width;
+        lp.height = height;
+        frame.setLayoutParams(lp);
+    }
+
     private String getDetailPosterPath(PlayInfoResponse info, PlayListItem item) {
         if (info != null && info.item != null) {
             if (info.item.posters != null && !info.item.posters.isEmpty()) return info.item.posters;
-            if (info.item.poster != null && !info.item.poster.isEmpty()) return info.item.poster;
         }
+        if (item != null && item.poster != null && !item.poster.isEmpty()) return item.poster;
+        if (info != null && info.item != null
+                && info.item.poster != null && !info.item.poster.isEmpty()) return info.item.poster;
         return item != null ? item.poster : null;
     }
 
@@ -749,6 +939,40 @@ public class HomeActivity extends AppCompatActivity {
         return getDetailPosterPath(info, item);
     }
 
+    private String getDetailStillPath(PlayInfoResponse info, PlayListItem item) {
+        if (info != null && info.item != null
+                && info.item.stillPath != null && !info.item.stillPath.isEmpty()) {
+            return info.item.stillPath;
+        }
+        return item != null ? item.poster : null;
+    }
+
+    private boolean prefersStillInDetail(PlayInfoResponse info, PlayListItem item) {
+        String itemType = item != null ? item.type : null;
+        if ("Episode".equals(itemType) || "Video".equals(itemType)) return true;
+        if ("TV".equals(itemType) || "Movie".equals(itemType)
+                || "Directory".equals(itemType) || "Folder".equals(itemType)) {
+            return false;
+        }
+        String infoType = info != null ? info.type : null;
+        return "Episode".equals(infoType) || "Video".equals(infoType);
+    }
+
+    private ArtworkRole getDetailMainArtworkRole(PlayInfoResponse info, PlayListItem item) {
+        if (prefersStillInDetail(info, item)) return ArtworkRole.DETAIL_STILL;
+        String poster = getDetailPosterPath(info, item);
+        return poster != null && !poster.isEmpty() ? ArtworkRole.DETAIL_POSTER : ArtworkRole.DETAIL_STILL;
+    }
+
+    private String getDetailMainArtworkPath(PlayInfoResponse info, PlayListItem item) {
+        if (getDetailMainArtworkRole(info, item) == ArtworkRole.DETAIL_STILL) {
+            String still = getDetailStillPath(info, item);
+            return still != null && !still.isEmpty() ? still : getDetailPosterPath(info, item);
+        }
+        String poster = getDetailPosterPath(info, item);
+        return poster != null && !poster.isEmpty() ? poster : getDetailStillPath(info, item);
+    }
+
     private String getEpisodeStillPath(PlayListItem episode) {
         return episode != null ? episode.poster : null;
     }
@@ -763,6 +987,7 @@ public class HomeActivity extends AppCompatActivity {
         currentBrowseTitle = title;
         currentDetailItem = null;
         currentDetailInfo = null;
+        setMoviesContentEdgeToEdge(false);
         moviesContainer.removeAllViews();
         tvMoviesLoading.setVisibility(View.VISIBLE);
 
@@ -916,22 +1141,18 @@ public class HomeActivity extends AppCompatActivity {
         content.setOrientation(LinearLayout.VERTICAL);
         final boolean optimizedDetailLayout = shouldUseOptimizedDetailLayout();
         final boolean wideDetailLayout = shouldUseWideDetailLayout();
-        int contentPad = optimizedDetailLayout ? dp(wideDetailLayout ? 54 : 28) : 14;
+        setMoviesContentEdgeToEdge(optimizedDetailLayout);
+        int contentPad = optimizedDetailLayout ? 0 : 14;
         content.setPadding(contentPad, 0, contentPad, optimizedDetailLayout ? dp(28) : 20);
 
-        String posterPath = getDetailPosterPath(info, item);
+        String mainArtworkPath = getDetailMainArtworkPath(info, item);
+        ArtworkRole mainArtworkRole = getDetailMainArtworkRole(info, item);
         String atmospherePath = getDetailAtmospherePath(info, item);
         RoundedImageView poster = new RoundedImageView(this);
         poster.setAdjustViewBounds(false);
         poster.setScaleType(ImageView.ScaleType.FIT_CENTER);
         poster.setBackgroundColor(0xFF2A2A2A);
         poster.setCornerRadius(10);
-        String pUrl = makePosterUrl(posterPath);
-        if (pUrl != null) { poster.setTag(pUrl); }
-        if (pUrl != null) {
-            new Handler(Looper.getMainLooper()).post(() ->
-                SimpleImageLoader.load(pUrl, poster, apiManager.getClient()));
-        }
 
         // 元数据卡片
         LinearLayout metaCard = new LinearLayout(this);
@@ -1195,15 +1416,23 @@ public class HomeActivity extends AppCompatActivity {
 
         if (optimizedDetailLayout) {
             if (wideDetailLayout) {
-                addFnWideDetailHero(content, poster, metaCard, playFrame, optimizedOverview, atmospherePath);
+                addFnWideDetailHero(content, poster, mainArtworkPath, mainArtworkRole,
+                        metaCard, playFrame, optimizedOverview, atmospherePath);
             } else {
-                addFnCompactDetailHero(content, poster, metaCard, playFrame, optimizedOverview, atmospherePath);
+                addFnCompactDetailHero(content, poster, mainArtworkPath, mainArtworkRole,
+                        metaCard, playFrame, optimizedOverview, atmospherePath);
             }
         } else {
             poster.setLayoutParams(new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
             poster.setAdjustViewBounds(true);
             poster.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            String pUrl = makePosterUrl(mainArtworkPath);
+            if (pUrl != null) {
+                poster.setTag(pUrl);
+                new Handler(Looper.getMainLooper()).post(() ->
+                    SimpleImageLoader.load(pUrl, poster, apiManager.getClient()));
+            }
             content.addView(poster);
             content.addView(makeSpacer(12));
             content.addView(metaCard);
@@ -1232,6 +1461,7 @@ public class HomeActivity extends AppCompatActivity {
     }
 
     private void addFnWideDetailHero(LinearLayout content, RoundedImageView poster,
+                                     String artworkPath, ArtworkRole artworkRole,
                                      LinearLayout metaCard, FrameLayout playFrame,
                                      TextView overview, String atmospherePath) {
         FrameLayout hero = new FrameLayout(this);
@@ -1245,10 +1475,14 @@ public class HomeActivity extends AppCompatActivity {
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setBaselineAligned(false);
+        row.setPadding(dp(46), 0, dp(46), 0);
 
-        poster.setLayoutParams(new LinearLayout.LayoutParams(dp(220), dp(330)));
+        ArtworkShape defaultShape = defaultShapeForRole(artworkRole, artworkPath);
+        poster.setLayoutParams(new LinearLayout.LayoutParams(
+                dp(isLandscapeShape(defaultShape) ? 390 : 220),
+                dp(isLandscapeShape(defaultShape) ? 220 : 330)));
         poster.setAdjustViewBounds(false);
-        poster.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        applyImageScale(poster, defaultShape, artworkRole);
         row.addView(poster);
 
         LinearLayout side = new LinearLayout(this);
@@ -1275,9 +1509,11 @@ public class HomeActivity extends AppCompatActivity {
 
         hero.addView(row);
         content.addView(hero);
+        loadDetailArtwork(poster, artworkPath, artworkRole, true, null, metaCard);
     }
 
     private void addFnCompactDetailHero(LinearLayout content, RoundedImageView poster,
+                                        String artworkPath, ArtworkRole artworkRole,
                                         LinearLayout metaCard, FrameLayout playFrame,
                                         TextView overview, String atmospherePath) {
         FrameLayout hero = new FrameLayout(this);
@@ -1289,7 +1525,7 @@ public class HomeActivity extends AppCompatActivity {
         body.setLayoutParams(new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         body.setOrientation(LinearLayout.VERTICAL);
-        body.setPadding(0, dp(24), 0, dp(24));
+        body.setPadding(dp(28), dp(24), dp(28), dp(24));
 
         LinearLayout top = new LinearLayout(this);
         top.setLayoutParams(new LinearLayout.LayoutParams(
@@ -1297,9 +1533,12 @@ public class HomeActivity extends AppCompatActivity {
         top.setOrientation(LinearLayout.HORIZONTAL);
         top.setBaselineAligned(false);
 
-        poster.setLayoutParams(new LinearLayout.LayoutParams(dp(168), dp(250)));
+        ArtworkShape defaultShape = defaultShapeForRole(artworkRole, artworkPath);
+        poster.setLayoutParams(new LinearLayout.LayoutParams(
+                isLandscapeShape(defaultShape) ? ViewGroup.LayoutParams.MATCH_PARENT : dp(168),
+                dp(isLandscapeShape(defaultShape) ? 190 : 250)));
         poster.setAdjustViewBounds(false);
-        poster.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        applyImageScale(poster, defaultShape, artworkRole);
         top.addView(poster);
 
         LinearLayout.LayoutParams metaLp = new LinearLayout.LayoutParams(
@@ -1326,6 +1565,43 @@ public class HomeActivity extends AppCompatActivity {
 
         hero.addView(body);
         content.addView(hero);
+        loadDetailArtwork(poster, artworkPath, artworkRole, false, top, metaCard);
+    }
+
+    private void loadDetailArtwork(RoundedImageView image, String path, ArtworkRole role,
+                                   boolean wide, LinearLayout compactTop, LinearLayout metaCard) {
+        loadArtwork(path, image, role, new SimpleImageLoader.Callback() {
+            @Override
+            public void onLoaded(ImageView view, int width, int height) {
+                ArtworkShape shape = resolveShape(role, path, width, height);
+                view.post(() -> applyDetailArtworkShape(view, shape, role, wide, compactTop, metaCard));
+            }
+
+            @Override
+            public void onFailed(ImageView view) {
+                view.post(() -> applyDetailArtworkShape(view,
+                        defaultShapeForRole(role, path), role, wide, compactTop, metaCard));
+            }
+        });
+    }
+
+    private void applyDetailArtworkShape(ImageView image, ArtworkShape shape, ArtworkRole role,
+                                         boolean wide, LinearLayout compactTop, LinearLayout metaCard) {
+        boolean landscape = isLandscapeShape(shape);
+        if (wide) {
+            applyFrameSize(image, dp(landscape ? 390 : 220), dp(landscape ? 220 : 330));
+        } else if (compactTop != null) {
+            compactTop.setOrientation(landscape ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
+            applyFrameSize(image, landscape ? ViewGroup.LayoutParams.MATCH_PARENT : dp(168),
+                    dp(landscape ? 190 : 250));
+            LinearLayout.LayoutParams metaLp = new LinearLayout.LayoutParams(
+                    landscape ? ViewGroup.LayoutParams.MATCH_PARENT : 0,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    landscape ? 0 : 1);
+            metaLp.setMargins(landscape ? 0 : dp(22), landscape ? dp(18) : dp(20), 0, 0);
+            metaCard.setLayoutParams(metaLp);
+        }
+        applyImageScale(image, shape, role);
     }
 
     private void addDetailAtmosphere(FrameLayout hero, String path) {
@@ -1514,12 +1790,20 @@ public class HomeActivity extends AppCompatActivity {
         thumb.setScaleType(ImageView.ScaleType.CENTER_CROP);
         thumb.setBackgroundColor(0xFF2A2A2A);
         thumb.setCornerRadius(8);
-        String imgUrl = makePosterUrl(getEpisodeStillPath(ep));
-        if (imgUrl != null) {
-            thumb.setTag(imgUrl);
-            new Handler(Looper.getMainLooper()).post(() ->
-                    SimpleImageLoader.load(imgUrl, thumb, apiManager.getClient()));
-        }
+        String stillPath = getEpisodeStillPath(ep);
+        loadArtwork(stillPath, thumb, ArtworkRole.EPISODE_STILL, new SimpleImageLoader.Callback() {
+            @Override
+            public void onLoaded(ImageView view, int width, int height) {
+                ArtworkShape shape = resolveShape(ArtworkRole.EPISODE_STILL, stillPath, width, height);
+                view.post(() -> applyEpisodeThumbShape(thumbFrame, view, shape, wide));
+            }
+
+            @Override
+            public void onFailed(ImageView view) {
+                view.post(() -> applyEpisodeThumbShape(thumbFrame, view,
+                        defaultShapeForRole(ArtworkRole.EPISODE_STILL, stillPath), wide));
+            }
+        });
         thumbFrame.addView(thumb);
 
         if (isCurrent || ep.ts > 0) {
@@ -1591,6 +1875,7 @@ public class HomeActivity extends AppCompatActivity {
 
     /** 显示某季剧集 */
     private void showEpisodes(List<PlayListItem> eps, int sn, PlayListItem original) {
+        setMoviesContentEdgeToEdge(false);
         moviesContainer.removeAllViews();
 
         // 标题
@@ -1750,8 +2035,20 @@ public class HomeActivity extends AppCompatActivity {
             cover.setLayoutParams(coverLp);
             cover.setScaleType(landscape ? ImageView.ScaleType.CENTER_CROP : ImageView.ScaleType.FIT_CENTER);
             cover.setBackgroundColor(0xFF333333);
-            String imgUrl = makePosterUrl(lib.getFirstPoster());
-            if (imgUrl != null) cover.setTag(imgUrl);
+            String coverPath = lib.getFirstPoster();
+            loadArtwork(coverPath, cover, ArtworkRole.MEDIA_LIBRARY_COVER, new SimpleImageLoader.Callback() {
+                @Override
+                public void onLoaded(ImageView view, int width, int height) {
+                    ArtworkShape shape = resolveShape(ArtworkRole.MEDIA_LIBRARY_COVER, coverPath, width, height);
+                    view.post(() -> applyLibraryCoverShape(view, shape));
+                }
+
+                @Override
+                public void onFailed(ImageView view) {
+                    view.post(() -> applyLibraryCoverShape(view,
+                            defaultShapeForRole(ArtworkRole.MEDIA_LIBRARY_COVER, coverPath)));
+                }
+            });
             card.addView(cover);
         }
 
@@ -1796,7 +2093,7 @@ public class HomeActivity extends AppCompatActivity {
 
     private boolean shouldUseLandscapeLibCard(MediaDbItem lib) {
         if (lib == null) return true;
-        return looksLandscapePoster(lib.getFirstPoster());
+        return true;
     }
 
     // ==================== 设置 ====================
@@ -2291,6 +2588,11 @@ public class HomeActivity extends AppCompatActivity {
             View v = c.getChildAt(i);
             if (v != l && v != e) c.removeView(v);
         }
+    }
+
+    private void setMoviesContentEdgeToEdge(boolean edgeToEdge) {
+        int padding = edgeToEdge ? 0 : dp(8);
+        moviesContainer.setPadding(padding, padding, padding, padding);
     }
 
     private View makeSpacer(int h) {
