@@ -1161,13 +1161,14 @@ public class HomeActivity extends AppCompatActivity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         playBtn.setBackgroundDrawable(null);
         playBtn.setFocusable(true);
+        playBtn.setAllCaps(false);
         playBtn.setGravity(Gravity.CENTER);
         playBtn.setTextColor(0xFFFFFFFF);
         playBtn.setOnFocusChangeListener((v, hasFocus) -> {
             if (hasFocus) {
                 playBtn.setBackgroundColor(0x55FFFFFF);
-                playBtn.setScaleX(1.05f);
-                playBtn.setScaleY(1.05f);
+                playBtn.setScaleX(1.03f);
+                playBtn.setScaleY(1.03f);
             } else {
                 playBtn.setBackgroundColor(0x00000000);
                 playBtn.setScaleX(1.0f);
@@ -1176,10 +1177,13 @@ public class HomeActivity extends AppCompatActivity {
         });
         if (historyRecord != null) {
             playBtn.setTextSize(16);
-            playBtn.setText("▶  继续播放\n" + formatDuration(pTs) + " / " + formatDuration(pDur));
+            String progressText = pTs > 0 && pDur > 0
+                    ? "\n" + formatDuration(pTs) + " / " + formatDuration(pDur)
+                    : (pTs > 0 ? "\n已看到 " + formatDuration(pTs) : "");
+            playBtn.setText("▶  继续播放" + progressText);
         } else {
-            playBtn.setTextSize(22);
-            playBtn.setText("▶  播放");
+            playBtn.setTextSize(optimizedDetailLayout ? 20 : 22);
+            playBtn.setText(pEp > 0 ? "▶  第 " + pEp + " 集" : "▶  播放");
         }
 
         playBtn.setOnClickListener(v -> {
@@ -1565,8 +1569,8 @@ public class HomeActivity extends AppCompatActivity {
         final String epPG = ep.parentGuid;
         card.setOnClickListener(v -> launchPlayer(eg, et, eTV, eEp, epPo, epCa, epTs, epDu, epPG));
         card.setOnFocusChangeListener((v, hasFocus) -> {
-            v.setScaleX(hasFocus ? 1.04f : 1.0f);
-            v.setScaleY(hasFocus ? 1.04f : 1.0f);
+            v.setScaleX(hasFocus ? 1.03f : 1.0f);
+            v.setScaleY(hasFocus ? 1.03f : 1.0f);
             v.setBackgroundDrawable(makeFocusStrokeDrawable(isCurrent, hasFocus));
         });
 
