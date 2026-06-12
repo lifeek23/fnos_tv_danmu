@@ -668,16 +668,25 @@ public class HomeActivity extends AppCompatActivity {
         if (currentContentMode == CONTENT_DETAIL && currentDetailItem != null && currentDetailInfo != null) {
             buildDetailPage(currentDetailItem, currentDetailInfo);
         } else if (currentContentMode == CONTENT_BROWSE && currentBrowseGuid != null && !currentBrowseGuid.isEmpty()) {
+            showUiModeRefreshLoading();
             browseItems(currentBrowseGuid, currentBrowseTitle);
         } else if (overviewBuilt && !mediaLibraries.isEmpty()) {
+            showUiModeRefreshLoading();
             showOverview();
             loadAllPreviews();
         } else if (currentTab == 0) {
+            showUiModeRefreshLoading();
             loadOverview();
         }
         if (!mediaLibraries.isEmpty()) {
             populateLibGrid(libraryContainer, mediaLibraries);
         }
+    }
+
+    private void showUiModeRefreshLoading() {
+        moviesContainer.removeAllViews();
+        tvMoviesLoading.setText("正在切换界面...");
+        tvMoviesLoading.setVisibility(View.VISIBLE);
     }
 
     private int getWatchCardWidth(WatchRecord record) {
