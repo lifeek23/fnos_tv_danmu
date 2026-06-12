@@ -35,9 +35,9 @@ public class HomeActivity extends AppCompatActivity {
     private View panelMovies, panelLibrary, panelSettings;
     private LinearLayout moviesContainer, libraryContainer;
     private TextView tvMoviesLoading, tvLibraryLoading, tvLibraryEmpty;
-    private TextView tvSettingUsername, tvSettingServer, tvDecoderValue, tvDanmuUrl;
+    private TextView tvSettingUsername, tvSettingServer, tvDecoderValue, tvDanmuUrl, tvUiModeValue;
     private Button btnLogout, btnCheckUpdate, btnFeedback;
-    private RelativeLayout rlDecoderSetting, rlDanmuSetting, rlSeekStep;
+    private RelativeLayout rlDecoderSetting, rlDanmuSetting, rlSeekStep, rlUiMode;
     private TextView tvSeekStepValue;
 
     private int currentTab = 0;
@@ -50,6 +50,9 @@ public class HomeActivity extends AppCompatActivity {
     private String baseUrl = "";
     private SharedPreferences prefs;
     private static final String PREF_DECODER = "decoder_mode";
+    private static final String PREF_UI_MODE = "ui_mode";
+    private static final String UI_MODE_CLASSIC = "classic";
+    private static final String UI_MODE_OPTIMIZED = "optimized";
 
     private long t0;
     private boolean overviewBuilt = false;
@@ -114,8 +117,10 @@ public class HomeActivity extends AppCompatActivity {
         rlDecoderSetting = findViewById(R.id.rlDecoderSetting);
         rlDanmuSetting = findViewById(R.id.rlDanmuSetting);
         rlSeekStep = findViewById(R.id.rlSeekStep);
+        rlUiMode = findViewById(R.id.rlUiMode);
         tvSeekStepValue = findViewById(R.id.tvSeekStepValue);
         tvDanmuUrl = findViewById(R.id.tvDanmuUrl);
+        tvUiModeValue = findViewById(R.id.tvUiModeValue);
         tvSettingServer.setText(prefs.getString("host", ""));
 
         TextView tvVersion = findViewById(R.id.tvVersionName);
@@ -408,7 +413,7 @@ public class HomeActivity extends AppCompatActivity {
         card.setPadding(6, 6, 6, 6);
         card.setFocusable(true);
 
-        boolean landscape = shouldUseLandscapeWatchCard(record);
+        boolean landscape = isOptimizedUi() && shouldUseLandscapeWatchCard(record);
         ImageView poster = new ImageView(this);
         poster.setLayoutParams(new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, landscape ? 160 : 280));
@@ -569,7 +574,7 @@ public class HomeActivity extends AppCompatActivity {
         card.setFocusable(true);
 
         // 海报 — 只设URL标记，不加载（等页面显示完后统一逐张加载）
-        boolean landscape = shouldUseLandscapeItemCard(item);
+        boolean landscape = isOptimizedUi() && shouldUseLandscapeItemCard(item);
         ImageView iv = new ImageView(this);
         iv.setLayoutParams(new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, landscape ? 150 : 280));
@@ -625,11 +630,35 @@ public class HomeActivity extends AppCompatActivity {
         showDetail(item);  // 全部走 getPlayInfo
     }
 
+    private boolean isOptimizedUi() {
+        return UI_MODE_OPTIMIZED.equals(prefs.getString(PREF_UI_MODE, UI_MODE_OPTIMIZED));
+    }
+
+    private void updateUiModeText() {
+        if (tvUiModeValue != null) {
+            tvUiModeValue.setText(isOptimizedUi() ? "优化版" : "经典版");
+        }
+    }
+
+    private void refreshCurrentUiModePage() {
+        if (overviewBuilt && !mediaLibraries.isEmpty()) {
+            showOverview();
+            loadAllPreviews();
+        } else if (currentTab == 0) {
+            loadOverview();
+        }
+        if (!mediaLibraries.isEmpty()) {
+            populateLibGrid(libraryContainer, mediaLibraries);
+        }
+    }
+
     private int getWatchCardWidth(WatchRecord record) {
+        if (!isOptimizedUi()) return 220;
         return shouldUseLandscapeWatchCard(record) ? 330 : 220;
     }
 
     private int getWatchCardHeight(WatchRecord record) {
+        if (!isOptimizedUi()) return 380;
         return shouldUseLandscapeWatchCard(record) ? 250 : 380;
     }
 
@@ -640,10 +669,12 @@ public class HomeActivity extends AppCompatActivity {
     }
 
     private int getItemCardWidth(PlayListItem item) {
+        if (!isOptimizedUi()) return 220;
         return shouldUseLandscapeItemCard(item) ? 330 : 220;
     }
 
     private int getItemCardHeight(PlayListItem item) {
+        if (!isOptimizedUi()) return 380;
         return shouldUseLandscapeItemCard(item) ? 250 : 380;
     }
 
@@ -928,17 +959,19 @@ public class HomeActivity extends AppCompatActivity {
                 ? info.item.overview : item.overview;
         LinearLayout overviewCard = null;
         if (overview != null && !overview.isEmpty()) {
-            TextView ovSummary = new TextView(this);
-            ovSummary.setLayoutParams(new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-            ovSummary.setPadding(0, 10, 0, 0);
-            ovSummary.setText(overview);
-            ovSummary.setTextColor(0xFFCCCCCC);
-            ovSummary.setTextSize(13);
-            ovSummary.setLineSpacing(4, 1);
-            ovSummary.setMaxLines(4);
-            ovSummary.setEllipsize(TextUtils.TruncateAt.END);
-            metaCard.addView(ovSummary);
+            if (isOptimizedUi()) {
+                TextView ovSummary = new TextView(this);
+                ovSummary.setLayoutParams(new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+                ovSummary.setPadding(0, 10, 0, 0);
+                ovSummary.setText(overview);
+                ovSummary.setTextColor(0xFFCCCCCC);
+                ovSummary.setTextSize(13);
+                ovSummary.setLineSpacing(4, 1);
+                ovSummary.setMaxLines(4);
+                ovSummary.setEllipsize(TextUtils.TruncateAt.END);
+                metaCard.addView(ovSummary);
+            }
 
             overviewCard = new LinearLayout(this);
             overviewCard.setLayoutParams(new LinearLayout.LayoutParams(
@@ -1080,42 +1113,57 @@ public class HomeActivity extends AppCompatActivity {
         });
         playFrame.addView(playBtn);
 
-        int screenW = getResources().getDisplayMetrics().widthPixels;
-        boolean compactDetail = screenW < 800;
-        int posterW = backdropPath != null ? 440 : 270;
-        int posterH = backdropPath != null ? 248 : 390;
-        if (compactDetail) {
-            posterW = ViewGroup.LayoutParams.MATCH_PARENT;
-            posterH = backdropPath != null ? 220 : 320;
+        if (isOptimizedUi()) {
+            int screenW = getResources().getDisplayMetrics().widthPixels;
+            boolean compactDetail = screenW < 800;
+            int posterW = backdropPath != null ? 440 : 270;
+            int posterH = backdropPath != null ? 248 : 390;
+            if (compactDetail) {
+                posterW = ViewGroup.LayoutParams.MATCH_PARENT;
+                posterH = backdropPath != null ? 220 : 320;
+            }
+            poster.setLayoutParams(new LinearLayout.LayoutParams(posterW, posterH));
+
+            LinearLayout hero = new LinearLayout(this);
+            hero.setLayoutParams(new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            hero.setOrientation(compactDetail ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
+            hero.setBaselineAligned(false);
+
+            LinearLayout side = new LinearLayout(this);
+            LinearLayout.LayoutParams sideLp = new LinearLayout.LayoutParams(
+                    compactDetail ? ViewGroup.LayoutParams.MATCH_PARENT : 0,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    compactDetail ? 0 : 1);
+            if (compactDetail) sideLp.setMargins(0, 12, 0, 0);
+            else sideLp.setMargins(14, 0, 0, 0);
+            side.setLayoutParams(sideLp);
+            side.setOrientation(LinearLayout.VERTICAL);
+
+            side.addView(metaCard);
+            side.addView(makeSpacer(10));
+            side.addView(playFrame);
+            hero.addView(poster);
+            hero.addView(side);
+            content.addView(hero);
+        } else {
+            poster.setLayoutParams(new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            poster.setAdjustViewBounds(true);
+            poster.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            content.addView(poster);
+            content.addView(makeSpacer(12));
+            content.addView(metaCard);
+            content.addView(makeSpacer(12));
         }
-        poster.setLayoutParams(new LinearLayout.LayoutParams(posterW, posterH));
-
-        LinearLayout hero = new LinearLayout(this);
-        hero.setLayoutParams(new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        hero.setOrientation(compactDetail ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
-        hero.setBaselineAligned(false);
-
-        LinearLayout side = new LinearLayout(this);
-        LinearLayout.LayoutParams sideLp = new LinearLayout.LayoutParams(
-                compactDetail ? ViewGroup.LayoutParams.MATCH_PARENT : 0,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                compactDetail ? 0 : 1);
-        if (compactDetail) sideLp.setMargins(0, 12, 0, 0);
-        else sideLp.setMargins(14, 0, 0, 0);
-        side.setLayoutParams(sideLp);
-        side.setOrientation(LinearLayout.VERTICAL);
-
-        side.addView(metaCard);
-        side.addView(makeSpacer(10));
-        side.addView(playFrame);
-        hero.addView(poster);
-        hero.addView(side);
-        content.addView(hero);
 
         if (overviewCard != null) {
             content.addView(makeSpacer(12));
             content.addView(overviewCard);
+        }
+        if (!isOptimizedUi()) {
+            content.addView(makeSpacer(12));
+            content.addView(playFrame);
         }
 
         // Episode 类型 → 加载剧集列表，加载后用剧集列表里的精确时长更新播放按钮
@@ -1127,7 +1175,7 @@ public class HomeActivity extends AppCompatActivity {
 
         scrollView.addView(content);
         moviesContainer.addView(scrollView);
-        playBtn.post(() -> playBtn.requestFocus());
+        if (isOptimizedUi()) playBtn.post(() -> playBtn.requestFocus());
     }
 
     /** 加载剧集列表并按季分组 */
@@ -1364,17 +1412,19 @@ public class HomeActivity extends AppCompatActivity {
         card.setFocusable(true);
         card.setMinimumHeight(56);
 
-        boolean landscape = shouldUseLandscapeLibCard(lib);
-        ImageView cover = new ImageView(this);
-        LinearLayout.LayoutParams coverLp = new LinearLayout.LayoutParams(
-                landscape ? 140 : 76, landscape ? 80 : 108);
-        coverLp.setMargins(0, 0, 14, 0);
-        cover.setLayoutParams(coverLp);
-        cover.setScaleType(landscape ? ImageView.ScaleType.CENTER_CROP : ImageView.ScaleType.FIT_CENTER);
-        cover.setBackgroundColor(0xFF333333);
-        String imgUrl = makePosterUrl(lib.getFirstPoster());
-        if (imgUrl != null) cover.setTag(imgUrl);
-        card.addView(cover);
+        if (isOptimizedUi()) {
+            boolean landscape = shouldUseLandscapeLibCard(lib);
+            ImageView cover = new ImageView(this);
+            LinearLayout.LayoutParams coverLp = new LinearLayout.LayoutParams(
+                    landscape ? 140 : 76, landscape ? 80 : 108);
+            coverLp.setMargins(0, 0, 14, 0);
+            cover.setLayoutParams(coverLp);
+            cover.setScaleType(landscape ? ImageView.ScaleType.CENTER_CROP : ImageView.ScaleType.FIT_CENTER);
+            cover.setBackgroundColor(0xFF333333);
+            String imgUrl = makePosterUrl(lib.getFirstPoster());
+            if (imgUrl != null) cover.setTag(imgUrl);
+            card.addView(cover);
+        }
 
         LinearLayout text = new LinearLayout(this);
         text.setLayoutParams(new LinearLayout.LayoutParams(
@@ -1429,6 +1479,17 @@ public class HomeActivity extends AppCompatActivity {
         String d = prefs.getString(PREF_DECODER, "hardware");
         tvDecoderValue.setText("hardware".equals(d) ? "硬解" : "软解");
         rlDecoderSetting.setOnClickListener(v -> toggleDecoder());
+
+        updateUiModeText();
+        if (rlUiMode != null) {
+            rlUiMode.setOnClickListener(v -> {
+                String next = isOptimizedUi() ? UI_MODE_CLASSIC : UI_MODE_OPTIMIZED;
+                prefs.edit().putString(PREF_UI_MODE, next).apply();
+                updateUiModeText();
+                Toast.makeText(this, "已切换为" + (isOptimizedUi() ? "优化版" : "经典版"), Toast.LENGTH_SHORT).show();
+                refreshCurrentUiModePage();
+            });
+        }
 
         // 弹幕服务器
         String danmuUrl = prefs.getString("danmu_url", "");
