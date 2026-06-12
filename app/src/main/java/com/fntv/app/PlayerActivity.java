@@ -2021,7 +2021,11 @@ public class PlayerActivity extends AppCompatActivity {
                 // LEFT/RIGHT 由 SeekBar 自身处理（已设 keyProgressIncrement=5000）
                 case KeyEvent.KEYCODE_DPAD_CENTER: case KeyEvent.KEYCODE_ENTER:
                     resetHideTimer();
-                    if (seekBar.hasFocus() || btnRewind.hasFocus() || btnForward.hasFocus()
+                    if (seekBar.hasFocus()) {
+                        togglePlay();
+                        return true;
+                    }
+                    if (btnRewind.hasFocus() || btnForward.hasFocus()
                             || btnSpeed.hasFocus() || btnRatio.hasFocus() || btnInfo.hasFocus()
                             || btnEpisodeList.hasFocus() || btnNextEp.hasFocus() || btnBrightness.hasFocus()) {
                         return true;
