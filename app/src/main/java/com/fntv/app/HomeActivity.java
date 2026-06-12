@@ -363,9 +363,14 @@ public class HomeActivity extends AppCompatActivity {
         h.setTypeface(Typeface.DEFAULT_BOLD);
         cont.addView(h);
 
+        int maxCardHeight = 0;
+        for (WatchRecord r : records) {
+            maxCardHeight = Math.max(maxCardHeight, getWatchCardHeight(r));
+        }
+
         HorizontalScrollView hsv = new HorizontalScrollView(this);
         hsv.setLayoutParams(new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, 410));
+                ViewGroup.LayoutParams.MATCH_PARENT, maxCardHeight + 30));
         hsv.setScrollBarStyle(View.SCROLLBARS_INSIDE_OVERLAY);
 
         LinearLayout row = new LinearLayout(this);
@@ -375,7 +380,7 @@ public class HomeActivity extends AppCompatActivity {
         for (WatchRecord r : records) {
             View card = makeWatchCard(r);
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                    220, 380);
+                    getWatchCardWidth(r), getWatchCardHeight(r));
             lp.setMargins(10, 0, 10, 0);
             card.setLayoutParams(lp);
             // 按↓强制到"查看全部"按钮
@@ -403,9 +408,10 @@ public class HomeActivity extends AppCompatActivity {
         card.setPadding(6, 6, 6, 6);
         card.setFocusable(true);
 
+        boolean landscape = shouldUseLandscapeWatchCard(record);
         ImageView poster = new ImageView(this);
         poster.setLayoutParams(new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, 280));
+                ViewGroup.LayoutParams.MATCH_PARENT, landscape ? 160 : 280));
         poster.setScaleType(ImageView.ScaleType.CENTER_CROP);
         poster.setBackgroundColor(0xFF333333);
         String imgUrl = makePosterUrl(record.poster);
@@ -480,9 +486,14 @@ public class HomeActivity extends AppCompatActivity {
     // ==================== 横向滚动卡片 ====================
 
     private void populateGrid(LinearLayout cont, List<PlayListItem> items) {
+        int maxCardHeight = 0;
+        for (PlayListItem item : items) {
+            maxCardHeight = Math.max(maxCardHeight, getItemCardHeight(item));
+        }
+
         HorizontalScrollView hsv = new HorizontalScrollView(this);
         hsv.setLayoutParams(new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, 410));
+                ViewGroup.LayoutParams.MATCH_PARENT, maxCardHeight + 30));
         hsv.setScrollBarStyle(View.SCROLLBARS_INSIDE_OVERLAY);
 
         LinearLayout row = new LinearLayout(this);
@@ -526,8 +537,10 @@ public class HomeActivity extends AppCompatActivity {
         }
 
         for (int i = 0; i < items.size(); i++) {
-            View card = makeItemCard(items.get(i));
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(220, 380);
+            PlayListItem item = items.get(i);
+            View card = makeItemCard(item);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    getItemCardWidth(item), getItemCardHeight(item));
             lp.setMargins(10, 0, 10, 0);
             card.setLayoutParams(lp);
             // 卡片：↑到当前查看全部，↓到下一个查看全部
@@ -547,7 +560,7 @@ public class HomeActivity extends AppCompatActivity {
         });
     }
 
-    /** 竖版卡片（2:3 比例适配海报图，图片为主，文字一条） */
+    /** 媒体卡片：电影保留竖版海报，剧集/视频/目录使用横版缩略图。 */
     private View makeItemCard(PlayListItem item) {
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
@@ -556,9 +569,10 @@ public class HomeActivity extends AppCompatActivity {
         card.setFocusable(true);
 
         // 海报 — 只设URL标记，不加载（等页面显示完后统一逐张加载）
+        boolean landscape = shouldUseLandscapeItemCard(item);
         ImageView iv = new ImageView(this);
         iv.setLayoutParams(new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, 280));
+                ViewGroup.LayoutParams.MATCH_PARENT, landscape ? 150 : 280));
         iv.setScaleType(ImageView.ScaleType.CENTER_CROP);
         iv.setBackgroundColor(0xFF333333);
         String imgUrl = makePosterUrl(item.poster);
@@ -568,7 +582,7 @@ public class HomeActivity extends AppCompatActivity {
         // 底部文字条：类型 + 标题
         LinearLayout textBar = new LinearLayout(this);
         textBar.setLayoutParams(new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, 88));
+                ViewGroup.LayoutParams.MATCH_PARENT, landscape ? 82 : 88));
         textBar.setOrientation(LinearLayout.VERTICAL);
         textBar.setGravity(Gravity.CENTER_VERTICAL);
         textBar.setPadding(0, 4, 0, 4);
@@ -611,6 +625,45 @@ public class HomeActivity extends AppCompatActivity {
         showDetail(item);  // 全部走 getPlayInfo
     }
 
+    private int getWatchCardWidth(WatchRecord record) {
+        return shouldUseLandscapeWatchCard(record) ? 330 : 220;
+    }
+
+    private int getWatchCardHeight(WatchRecord record) {
+        return shouldUseLandscapeWatchCard(record) ? 250 : 380;
+    }
+
+    private boolean shouldUseLandscapeWatchCard(WatchRecord record) {
+        if (record == null) return false;
+        if (record.tvTitle != null && !record.tvTitle.isEmpty()) return true;
+        return looksLandscapePoster(record.poster);
+    }
+
+    private int getItemCardWidth(PlayListItem item) {
+        return shouldUseLandscapeItemCard(item) ? 330 : 220;
+    }
+
+    private int getItemCardHeight(PlayListItem item) {
+        return shouldUseLandscapeItemCard(item) ? 250 : 380;
+    }
+
+    private boolean shouldUseLandscapeItemCard(PlayListItem item) {
+        if (item == null) return false;
+        if (looksLandscapePoster(item.poster)) return true;
+        String type = item.type != null ? item.type : "";
+        return "Episode".equals(type) || "Video".equals(type)
+                || "Directory".equals(type) || "Folder".equals(type)
+                || "folder".equals(type) || "TV".equals(type);
+    }
+
+    private boolean looksLandscapePoster(String path) {
+        if (path == null) return false;
+        String p = path.toLowerCase();
+        return p.contains("backdrop") || p.contains("thumbnail")
+                || p.contains("thumb") || p.contains("fanart")
+                || p.contains("landscape");
+    }
+
     // ==================== 查看全部 ====================
 
     private void browseItems(String ancestorGuid, String title) {
@@ -642,16 +695,21 @@ public class HomeActivity extends AppCompatActivity {
                     h.setTextColor(0xFFEEEEEE);
                     h.setTextSize(14);
                     moviesContainer.addView(h);
-                    // 多行竖卡网格（每行2张）
+                    // 多行网格：每行按本行最高卡片定高，避免横版图被塞进竖版海报。
                     for (int idx = 0; idx < list.size(); idx += 2) {
+                        int rowHeight = 0;
+                        for (int c = 0; c < 2 && idx + c < list.size(); c++) {
+                            rowHeight = Math.max(rowHeight, getItemCardHeight(list.get(idx + c)));
+                        }
                         LinearLayout row = new LinearLayout(HomeActivity.this);
                         row.setLayoutParams(new LinearLayout.LayoutParams(
-                                ViewGroup.LayoutParams.MATCH_PARENT, 410));
+                                ViewGroup.LayoutParams.MATCH_PARENT, rowHeight + 20));
                         row.setOrientation(LinearLayout.HORIZONTAL);
                         for (int c = 0; c < 2 && idx + c < list.size(); c++) {
-                            View card = makeItemCard(list.get(idx + c));
+                            PlayListItem rowItem = list.get(idx + c);
+                            View card = makeItemCard(rowItem);
                             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                                    0, ViewGroup.LayoutParams.MATCH_PARENT, 1);
+                                    0, getItemCardHeight(rowItem), 1);
                             if (c == 0) lp.rightMargin = 10;
                             else lp.leftMargin = 10;
                             card.setLayoutParams(lp);
@@ -1295,6 +1353,7 @@ public class HomeActivity extends AppCompatActivity {
             cont.addView(makeLibCard(libs.get(i)));
             if (i < libs.size() - 1) cont.addView(makeSpacer(8));
         }
+        new Handler(Looper.getMainLooper()).post(() -> loadImagesLazily(cont, 0));
     }
 
     private View makeLibCard(MediaDbItem lib) {
@@ -1304,6 +1363,18 @@ public class HomeActivity extends AppCompatActivity {
         card.setPadding(16, 18, 16, 18);
         card.setFocusable(true);
         card.setMinimumHeight(56);
+
+        boolean landscape = shouldUseLandscapeLibCard(lib);
+        ImageView cover = new ImageView(this);
+        LinearLayout.LayoutParams coverLp = new LinearLayout.LayoutParams(
+                landscape ? 140 : 76, landscape ? 80 : 108);
+        coverLp.setMargins(0, 0, 14, 0);
+        cover.setLayoutParams(coverLp);
+        cover.setScaleType(landscape ? ImageView.ScaleType.CENTER_CROP : ImageView.ScaleType.FIT_CENTER);
+        cover.setBackgroundColor(0xFF333333);
+        String imgUrl = makePosterUrl(lib.getFirstPoster());
+        if (imgUrl != null) cover.setTag(imgUrl);
+        card.addView(cover);
 
         LinearLayout text = new LinearLayout(this);
         text.setLayoutParams(new LinearLayout.LayoutParams(
@@ -1342,6 +1413,13 @@ public class HomeActivity extends AppCompatActivity {
             browseItems(m.guid, m.title);
         });
         return card;
+    }
+
+    private boolean shouldUseLandscapeLibCard(MediaDbItem lib) {
+        if (lib == null) return true;
+        if (looksLandscapePoster(lib.getFirstPoster())) return true;
+        String category = lib.category != null ? lib.category : "";
+        return !"Movie".equals(category) && !"Movies".equals(category);
     }
 
     // ==================== 设置 ====================
