@@ -331,7 +331,7 @@ DPAD 遥控器友好
                                 android:layout_height="wrap_content"
                                 android:layout_alignParentRight="true"
                                 android:layout_centerVertical="true"
-                                android:text="优化版"
+                                android:text="经典版"
                                 android:textColor="@color/colorAccent"
                                 android:textSize="14sp" />
 

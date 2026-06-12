@@ -45,6 +45,14 @@ public class HomeActivity extends AppCompatActivity {
     private WatchHistoryManager watchHistory;
     private boolean showingOverview = true;
     private boolean loadingPreviews = false;
+    private static final int CONTENT_OVERVIEW = 0;
+    private static final int CONTENT_BROWSE = 1;
+    private static final int CONTENT_DETAIL = 2;
+    private int currentContentMode = CONTENT_OVERVIEW;
+    private String currentBrowseGuid = "";
+    private String currentBrowseTitle = "";
+    private PlayListItem currentDetailItem;
+    private PlayInfoResponse currentDetailInfo;
 
     private FnApiManager apiManager;
     private String baseUrl = "";
@@ -167,6 +175,11 @@ public class HomeActivity extends AppCompatActivity {
     private void loadOverview() {
         Log.d("Overview", "loadOverview start  t=" + (System.currentTimeMillis() - t0) + "ms");
         showingOverview = true;
+        currentContentMode = CONTENT_OVERVIEW;
+        currentBrowseGuid = "";
+        currentBrowseTitle = "";
+        currentDetailItem = null;
+        currentDetailInfo = null;
         overviewBuilt = false;
         loadingPreviews = false;
         tvMoviesLoading.setVisibility(View.VISIBLE);
@@ -204,6 +217,7 @@ public class HomeActivity extends AppCompatActivity {
         tvMoviesLoading.setVisibility(View.GONE);
         moviesContainer.removeAllViews();
         showingOverview = true;
+        currentContentMode = CONTENT_OVERVIEW;
         overviewBuilt = true;
 
         // 继续观看
@@ -631,7 +645,13 @@ public class HomeActivity extends AppCompatActivity {
     }
 
     private boolean isOptimizedUi() {
-        return UI_MODE_OPTIMIZED.equals(prefs.getString(PREF_UI_MODE, UI_MODE_OPTIMIZED));
+        return UI_MODE_OPTIMIZED.equals(prefs.getString(PREF_UI_MODE, UI_MODE_CLASSIC));
+    }
+
+    private boolean shouldUseOptimizedDetailLayout() {
+        android.util.DisplayMetrics dm = getResources().getDisplayMetrics();
+        int widthDp = (int) (dm.widthPixels / dm.density);
+        return isOptimizedUi() && widthDp >= 800;
     }
 
     private void updateUiModeText() {
@@ -641,7 +661,11 @@ public class HomeActivity extends AppCompatActivity {
     }
 
     private void refreshCurrentUiModePage() {
-        if (overviewBuilt && !mediaLibraries.isEmpty()) {
+        if (currentContentMode == CONTENT_DETAIL && currentDetailItem != null && currentDetailInfo != null) {
+            buildDetailPage(currentDetailItem, currentDetailInfo);
+        } else if (currentContentMode == CONTENT_BROWSE && currentBrowseGuid != null && !currentBrowseGuid.isEmpty()) {
+            browseItems(currentBrowseGuid, currentBrowseTitle);
+        } else if (overviewBuilt && !mediaLibraries.isEmpty()) {
             showOverview();
             loadAllPreviews();
         } else if (currentTab == 0) {
@@ -664,7 +688,6 @@ public class HomeActivity extends AppCompatActivity {
 
     private boolean shouldUseLandscapeWatchCard(WatchRecord record) {
         if (record == null) return false;
-        if (record.tvTitle != null && !record.tvTitle.isEmpty()) return true;
         return looksLandscapePoster(record.poster);
     }
 
@@ -680,11 +703,7 @@ public class HomeActivity extends AppCompatActivity {
 
     private boolean shouldUseLandscapeItemCard(PlayListItem item) {
         if (item == null) return false;
-        if (looksLandscapePoster(item.poster)) return true;
-        String type = item.type != null ? item.type : "";
-        return "Episode".equals(type) || "Video".equals(type)
-                || "Directory".equals(type) || "Folder".equals(type)
-                || "folder".equals(type) || "TV".equals(type);
+        return looksLandscapePoster(item.poster);
     }
 
     private boolean looksLandscapePoster(String path) {
@@ -700,6 +719,11 @@ public class HomeActivity extends AppCompatActivity {
     private void browseItems(String ancestorGuid, String title) {
         Log.d("Overview", "browseItems: guid=" + ancestorGuid + " title=" + title);
         showingOverview = false;
+        currentContentMode = CONTENT_BROWSE;
+        currentBrowseGuid = ancestorGuid;
+        currentBrowseTitle = title;
+        currentDetailItem = null;
+        currentDetailInfo = null;
         moviesContainer.removeAllViews();
         tvMoviesLoading.setVisibility(View.VISIBLE);
 
@@ -794,6 +818,9 @@ public class HomeActivity extends AppCompatActivity {
 
     private void showDetail(PlayListItem item) {
         showingOverview = false;
+        currentContentMode = CONTENT_DETAIL;
+        currentDetailItem = item;
+        currentDetailInfo = null;
         moviesContainer.removeAllViews();
         tvMoviesLoading.setVisibility(View.VISIBLE);
         tvMoviesLoading.setText("加载中...");
@@ -810,7 +837,8 @@ public class HomeActivity extends AppCompatActivity {
                     Toast.makeText(HomeActivity.this, "获取详情失败", Toast.LENGTH_SHORT).show();
                     return;
                 }
-                buildDetailPage(item, response.body().data);
+                currentDetailInfo = response.body().data;
+                buildDetailPage(item, currentDetailInfo);
             }
             @Override
             public void onFailure(Call<ApiResponse<PlayInfoResponse>> call, Throwable t) {
@@ -959,7 +987,7 @@ public class HomeActivity extends AppCompatActivity {
                 ? info.item.overview : item.overview;
         LinearLayout overviewCard = null;
         if (overview != null && !overview.isEmpty()) {
-            if (isOptimizedUi()) {
+            if (shouldUseOptimizedDetailLayout()) {
                 TextView ovSummary = new TextView(this);
                 ovSummary.setLayoutParams(new LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -1113,7 +1141,7 @@ public class HomeActivity extends AppCompatActivity {
         });
         playFrame.addView(playBtn);
 
-        if (isOptimizedUi()) {
+        if (shouldUseOptimizedDetailLayout()) {
             int screenW = getResources().getDisplayMetrics().widthPixels;
             boolean compactDetail = screenW < 800;
             int posterW = backdropPath != null ? 440 : 270;
@@ -1161,7 +1189,7 @@ public class HomeActivity extends AppCompatActivity {
             content.addView(makeSpacer(12));
             content.addView(overviewCard);
         }
-        if (!isOptimizedUi()) {
+        if (!shouldUseOptimizedDetailLayout()) {
             content.addView(makeSpacer(12));
             content.addView(playFrame);
         }
@@ -1175,7 +1203,7 @@ public class HomeActivity extends AppCompatActivity {
 
         scrollView.addView(content);
         moviesContainer.addView(scrollView);
-        if (isOptimizedUi()) playBtn.post(() -> playBtn.requestFocus());
+        if (shouldUseOptimizedDetailLayout()) playBtn.post(() -> playBtn.requestFocus());
     }
 
     /** 加载剧集列表并按季分组 */
@@ -1467,9 +1495,7 @@ public class HomeActivity extends AppCompatActivity {
 
     private boolean shouldUseLandscapeLibCard(MediaDbItem lib) {
         if (lib == null) return true;
-        if (looksLandscapePoster(lib.getFirstPoster())) return true;
-        String category = lib.category != null ? lib.category : "";
-        return !"Movie".equals(category) && !"Movies".equals(category);
+        return looksLandscapePoster(lib.getFirstPoster());
     }
 
     // ==================== 设置 ====================
