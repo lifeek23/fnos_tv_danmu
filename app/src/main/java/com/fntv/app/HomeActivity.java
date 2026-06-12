@@ -1623,119 +1623,110 @@ public class HomeActivity extends AppCompatActivity {
 
     private void installApk(java.io.File apkFile) {
         try {
-            // 尝试多种安装方式，兼容电视设备
-            Intent install = null;
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                // 检查安装权限
-                if (!getPackageManager().canRequestPackageInstalls()) {
-                    Intent permIntent = new Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES);
-                    permIntent.setData(android.net.Uri.parse("package:" + getPackageName()));
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+                    && !getPackageManager().canRequestPackageInstalls()) {
+                Intent permIntent = new Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES);
+                permIntent.setData(android.net.Uri.parse("package:" + getPackageName()));
+                if (canHandleIntent(permIntent)) {
                     startActivity(permIntent);
                     Toast.makeText(this, "请允许安装未知来源应用后重试", Toast.LENGTH_LONG).show();
-                    resetUpdateBtn();
-                    return;
-                }
-                // 方式1: 用 PackageInstaller API（兼容 Android TV）
-                try {
-                    android.net.Uri apkUri = androidx.core.content.FileProvider.getUriForFile(
-                            this, getPackageName() + ".fileprovider", apkFile);
-                    install = new Intent(Intent.ACTION_INSTALL_PACKAGE);
-                    install.setData(apkUri);
-                    install.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-                    install.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                    startActivity(install);
-                    return;
-                } catch (android.content.ActivityNotFoundException e1) {
-                    Log.w("Update", "ACTION_INSTALL_PACKAGE 不可用，尝试 ACTION_VIEW");
-                }
-            }
-
-            // 方式2: 标准 ACTION_VIEW
-            try {
-                install = new Intent(Intent.ACTION_VIEW);
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                    android.net.Uri apkUri = androidx.core.content.FileProvider.getUriForFile(
-                            this, getPackageName() + ".fileprovider", apkFile);
-                    install.setDataAndType(apkUri, "application/vnd.android.package-archive");
-                    install.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
                 } else {
-                    install.setDataAndType(android.net.Uri.fromFile(apkFile), "application/vnd.android.package-archive");
+                    Toast.makeText(this, "请在系统设置中允许 FN TV 安装未知来源应用", Toast.LENGTH_LONG).show();
                 }
-                install.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                startActivity(install);
+                resetUpdateBtn();
                 return;
-            } catch (android.content.ActivityNotFoundException e2) {
-                Log.w("Update", "ACTION_VIEW 不可用");
             }
 
-            // 方式3: 都没找到安装器 → 复制到下载目录
-            final java.io.File apk = apkFile;
-            try {
-                java.io.File downloadDir = android.os.Environment.getExternalStoragePublicDirectory(
-                        android.os.Environment.DIRECTORY_DOWNLOADS);
-                if (!downloadDir.exists()) downloadDir.mkdirs();
-                java.io.File targetFile = new java.io.File(downloadDir, "FNTV_update_" + apk.getName());
-                java.io.FileInputStream fis = new java.io.FileInputStream(apk);
-                java.io.FileOutputStream fos = new java.io.FileOutputStream(targetFile);
-                byte[] buf = new byte[8192];
-                int n;
-                while ((n = fis.read(buf)) != -1) fos.write(buf, 0, n);
-                fis.close();
-                fos.close();
-                final String msg = "安装器不可用，APK 已复制到：\n" + targetFile.getAbsolutePath();
-                Log.w("Update", msg);
-                runOnUiThread(() -> {
-                    new android.app.AlertDialog.Builder(this)
-                            .setTitle("安装失败")
-                            .setMessage(msg)
-                            .setPositiveButton("我知道了", (d, w) -> resetUpdateBtn())
-                            .show();
-                });
-            } catch (Exception copyErr) {
-                Log.e("Update", "复制失败", copyErr);
-                runOnUiThread(() -> {
-                    new android.app.AlertDialog.Builder(this)
-                            .setTitle("安装失败")
-                            .setMessage("系统未找到安装器，APK 位置：\n" + apk.getAbsolutePath())
-                            .setPositiveButton("我知道了", (d, w) -> resetUpdateBtn())
-                            .show();
-                });
+            Intent install = buildInstallIntent(apkFile, true);
+            if (!canHandleIntent(install)) {
+                Log.w("Update", "ACTION_INSTALL_PACKAGE 不可用，尝试 ACTION_VIEW");
+                install = buildInstallIntent(apkFile, false);
             }
+
+            if (canHandleIntent(install)) {
+                grantApkReadPermission(install);
+                startActivity(install);
+                resetUpdateBtn();
+                return;
+            }
+
+            showInstallerUnavailable(apkFile, null);
         } catch (Exception e) {
             Log.e("Update", "安装失败", e);
-            final java.io.File apk = apkFile;
-            try {
-                java.io.File downloadDir = android.os.Environment.getExternalStoragePublicDirectory(
-                        android.os.Environment.DIRECTORY_DOWNLOADS);
-                if (!downloadDir.exists()) downloadDir.mkdirs();
-                java.io.File targetFile = new java.io.File(downloadDir, "FNTV_update_" + apk.getName());
-                java.io.FileInputStream fis = new java.io.FileInputStream(apk);
-                java.io.FileOutputStream fos = new java.io.FileOutputStream(targetFile);
-                byte[] buf = new byte[8192];
-                int n;
-                while ((n = fis.read(buf)) != -1) fos.write(buf, 0, n);
-                fis.close();
-                fos.close();
-                final String msg2 = "安装失败: " + e.getMessage() + "\nAPK 已复制到：\n" + targetFile.getAbsolutePath();
-                Log.w("Update", msg2);
-                runOnUiThread(() -> {
-                    new android.app.AlertDialog.Builder(this)
-                            .setTitle("安装失败")
-                            .setMessage(msg2)
-                            .setPositiveButton("我知道了", (d, w) -> resetUpdateBtn())
-                            .show();
-                });
-            } catch (Exception copyErr2) {
-                Log.e("Update", "复制失败", copyErr2);
-                runOnUiThread(() -> {
-                    new android.app.AlertDialog.Builder(this)
-                            .setTitle("安装失败")
-                            .setMessage("错误：" + e.getMessage())
-                            .setPositiveButton("我知道了", (d, w) -> resetUpdateBtn())
-                            .show();
-                });
+            showInstallerUnavailable(apkFile, e);
+        }
+    }
+
+    private Intent buildInstallIntent(java.io.File apkFile, boolean installPackageAction) {
+        Intent install = new Intent(installPackageAction ? Intent.ACTION_INSTALL_PACKAGE : Intent.ACTION_VIEW);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            android.net.Uri apkUri = androidx.core.content.FileProvider.getUriForFile(
+                    this, getPackageName() + ".fileprovider", apkFile);
+            if (installPackageAction) {
+                install.setData(apkUri);
+            } else {
+                install.setDataAndType(apkUri, "application/vnd.android.package-archive");
             }
+            install.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        } else {
+            install.setDataAndType(android.net.Uri.fromFile(apkFile), "application/vnd.android.package-archive");
+        }
+        install.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        return install;
+    }
+
+    private boolean canHandleIntent(Intent intent) {
+        return intent != null && intent.resolveActivity(getPackageManager()) != null;
+    }
+
+    private void grantApkReadPermission(Intent intent) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N || intent == null || intent.getData() == null) return;
+        java.util.List<android.content.pm.ResolveInfo> infos = getPackageManager()
+                .queryIntentActivities(intent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY);
+        for (android.content.pm.ResolveInfo info : infos) {
+            if (info.activityInfo != null && info.activityInfo.packageName != null) {
+                grantUriPermission(info.activityInfo.packageName, intent.getData(),
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            }
+        }
+    }
+
+    private void showInstallerUnavailable(java.io.File apkFile, Exception cause) {
+        java.io.File visibleApk = copyApkToDownloads(apkFile);
+        StringBuilder msg = new StringBuilder();
+        msg.append("当前系统未提供可调用的 APK 安装器。\n");
+        if (cause != null && cause.getMessage() != null) {
+            msg.append("错误信息：").append(cause.getMessage()).append("\n");
+        }
+        msg.append("APK 位置：\n").append(visibleApk != null ? visibleApk.getAbsolutePath() : apkFile.getAbsolutePath());
+        final String finalMsg = msg.toString();
+        Log.w("Update", finalMsg);
+        runOnUiThread(() -> {
+            new android.app.AlertDialog.Builder(this)
+                    .setTitle("无法自动安装")
+                    .setMessage(finalMsg)
+                    .setPositiveButton("我知道了", (d, w) -> resetUpdateBtn())
+                    .show();
+        });
+    }
+
+    private java.io.File copyApkToDownloads(java.io.File apkFile) {
+        try {
+            java.io.File downloadDir = android.os.Environment.getExternalStoragePublicDirectory(
+                    android.os.Environment.DIRECTORY_DOWNLOADS);
+            if (!downloadDir.exists()) downloadDir.mkdirs();
+            java.io.File targetFile = new java.io.File(downloadDir, "FNTV_update_" + apkFile.getName());
+            java.io.FileInputStream fis = new java.io.FileInputStream(apkFile);
+            java.io.FileOutputStream fos = new java.io.FileOutputStream(targetFile);
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = fis.read(buf)) != -1) fos.write(buf, 0, n);
+            fis.close();
+            fos.close();
+            return targetFile;
+        } catch (Exception copyErr) {
+            Log.e("Update", "复制 APK 到下载目录失败", copyErr);
+            return null;
         }
     }
 
