@@ -714,6 +714,25 @@ public class HomeActivity extends AppCompatActivity {
                 || p.contains("landscape");
     }
 
+    private String getDetailPosterPath(PlayInfoResponse info, PlayListItem item) {
+        String poster = info != null ? info.getPosterPath() : null;
+        if (poster != null && !poster.isEmpty()) return poster;
+        return item != null ? item.poster : null;
+    }
+
+    private String getDetailBackdropPath(PlayInfoResponse info) {
+        return info != null ? info.getBackdropPath() : null;
+    }
+
+    private String getDetailAtmospherePath(PlayInfoResponse info, PlayListItem item) {
+        String backdrop = getDetailBackdropPath(info);
+        return backdrop != null && !backdrop.isEmpty() ? backdrop : getDetailPosterPath(info, item);
+    }
+
+    private String getEpisodeStillPath(PlayListItem episode) {
+        return episode != null ? episode.poster : null;
+    }
+
     // ==================== 查看全部 ====================
 
     private void browseItems(String ancestorGuid, String title) {

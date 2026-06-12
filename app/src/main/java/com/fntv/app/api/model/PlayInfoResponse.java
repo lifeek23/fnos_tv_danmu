@@ -93,6 +93,6 @@ public class PlayInfoResponse {
     /** 获取背景图路径 */
     public String getBackdropPath() {
         if (item != null && item.backdrops != null && !item.backdrops.isEmpty()) return item.backdrops;
-        return getPosterPath();
+        return null;
     }
 }
