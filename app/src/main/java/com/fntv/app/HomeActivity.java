@@ -761,26 +761,23 @@ public class HomeActivity extends AppCompatActivity {
         content.setPadding(14, 0, 14, 20);
 
         // 海报（优先用 backdrops 背景大图，没有则用 poster）
-        String posterPath = info.getBackdropPath();
+        String backdropPath = info.getBackdropPath();
+        String posterPath = backdropPath;
         if (posterPath == null || (info.item != null && info.item.backdrops == null)) {
             posterPath = info.getPosterPath();
         }
         if (posterPath == null) posterPath = item.poster;
         RoundedImageView poster = new RoundedImageView(this);
-        poster.setLayoutParams(new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        poster.setAdjustViewBounds(true);
-        poster.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        poster.setAdjustViewBounds(false);
+        poster.setScaleType(backdropPath != null ? ImageView.ScaleType.CENTER_CROP : ImageView.ScaleType.FIT_CENTER);
         poster.setBackgroundColor(0xFF2A2A2A);
         poster.setCornerRadius(10);
         String pUrl = makePosterUrl(posterPath);
         if (pUrl != null) { poster.setTag(pUrl); }
-        content.addView(poster);
         if (pUrl != null) {
             new Handler(Looper.getMainLooper()).post(() ->
                 SimpleImageLoader.load(pUrl, poster, apiManager.getClient()));
         }
-        content.addView(makeSpacer(12));
 
         // 元数据卡片
         LinearLayout metaCard = new LinearLayout(this);
@@ -868,14 +865,24 @@ public class HomeActivity extends AppCompatActivity {
         meta.setTextSize(13);
         metaCard.addView(meta);
 
-        content.addView(metaCard);
-        content.addView(makeSpacer(12));
-
         // 简介卡片
         String overview = info.item != null && info.item.overview != null
                 ? info.item.overview : item.overview;
+        LinearLayout overviewCard = null;
         if (overview != null && !overview.isEmpty()) {
-            LinearLayout overviewCard = new LinearLayout(this);
+            TextView ovSummary = new TextView(this);
+            ovSummary.setLayoutParams(new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            ovSummary.setPadding(0, 10, 0, 0);
+            ovSummary.setText(overview);
+            ovSummary.setTextColor(0xFFCCCCCC);
+            ovSummary.setTextSize(13);
+            ovSummary.setLineSpacing(4, 1);
+            ovSummary.setMaxLines(4);
+            ovSummary.setEllipsize(TextUtils.TruncateAt.END);
+            metaCard.addView(ovSummary);
+
+            overviewCard = new LinearLayout(this);
             overviewCard.setLayoutParams(new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
             overviewCard.setOrientation(LinearLayout.VERTICAL);
@@ -897,8 +904,6 @@ public class HomeActivity extends AppCompatActivity {
             ov.setTextSize(14);
             ov.setLineSpacing(6, 1);
             overviewCard.addView(ov);
-            content.addView(overviewCard);
-            content.addView(makeSpacer(12));
         }
 
         // 查找历史观看记录
@@ -947,8 +952,8 @@ public class HomeActivity extends AppCompatActivity {
         // 播放按钮（自适应高度）
         FrameLayout playFrame = new FrameLayout(this);
         playFrame.setLayoutParams(new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        playFrame.setMinimumHeight(120);
+                ViewGroup.LayoutParams.MATCH_PARENT, 96));
+        playFrame.setMinimumHeight(96);
 
         // 圆角背景（进度条用两层：蓝色 + 灰色）
         if (progressPct > 0) {
@@ -1016,7 +1021,44 @@ public class HomeActivity extends AppCompatActivity {
             launchPlayer(pGuid, pTitle, pTV, pEp, pPoster, pCat, pTs, finalDur, pParentGuid);
         });
         playFrame.addView(playBtn);
-        content.addView(playFrame);
+
+        int screenW = getResources().getDisplayMetrics().widthPixels;
+        boolean compactDetail = screenW < 800;
+        int posterW = backdropPath != null ? 440 : 270;
+        int posterH = backdropPath != null ? 248 : 390;
+        if (compactDetail) {
+            posterW = ViewGroup.LayoutParams.MATCH_PARENT;
+            posterH = backdropPath != null ? 220 : 320;
+        }
+        poster.setLayoutParams(new LinearLayout.LayoutParams(posterW, posterH));
+
+        LinearLayout hero = new LinearLayout(this);
+        hero.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        hero.setOrientation(compactDetail ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
+        hero.setBaselineAligned(false);
+
+        LinearLayout side = new LinearLayout(this);
+        LinearLayout.LayoutParams sideLp = new LinearLayout.LayoutParams(
+                compactDetail ? ViewGroup.LayoutParams.MATCH_PARENT : 0,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                compactDetail ? 0 : 1);
+        if (compactDetail) sideLp.setMargins(0, 12, 0, 0);
+        else sideLp.setMargins(14, 0, 0, 0);
+        side.setLayoutParams(sideLp);
+        side.setOrientation(LinearLayout.VERTICAL);
+
+        side.addView(metaCard);
+        side.addView(makeSpacer(10));
+        side.addView(playFrame);
+        hero.addView(poster);
+        hero.addView(side);
+        content.addView(hero);
+
+        if (overviewCard != null) {
+            content.addView(makeSpacer(12));
+            content.addView(overviewCard);
+        }
 
         // Episode 类型 → 加载剧集列表，加载后用剧集列表里的精确时长更新播放按钮
         if ("Episode".equals(info.type) && info.parentGuid != null && !info.parentGuid.isEmpty()) {
@@ -1027,6 +1069,7 @@ public class HomeActivity extends AppCompatActivity {
 
         scrollView.addView(content);
         moviesContainer.addView(scrollView);
+        playBtn.post(() -> playBtn.requestFocus());
     }
 
     /** 加载剧集列表并按季分组 */
