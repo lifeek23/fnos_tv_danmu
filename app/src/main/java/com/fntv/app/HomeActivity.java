@@ -649,9 +649,13 @@ public class HomeActivity extends AppCompatActivity {
     }
 
     private boolean shouldUseOptimizedDetailLayout() {
+        return isOptimizedUi();
+    }
+
+    private boolean shouldUseWideDetailLayout() {
         android.util.DisplayMetrics dm = getResources().getDisplayMetrics();
         int widthDp = (int) (dm.widthPixels / dm.density);
-        return isOptimizedUi() && widthDp >= 800;
+        return widthDp >= 800;
     }
 
     private void updateUiModeText() {
@@ -715,8 +719,10 @@ public class HomeActivity extends AppCompatActivity {
     }
 
     private String getDetailPosterPath(PlayInfoResponse info, PlayListItem item) {
-        String poster = info != null ? info.getPosterPath() : null;
-        if (poster != null && !poster.isEmpty()) return poster;
+        if (info != null && info.item != null) {
+            if (info.item.posters != null && !info.item.posters.isEmpty()) return info.item.posters;
+            if (info.item.poster != null && !info.item.poster.isEmpty()) return info.item.poster;
+        }
         return item != null ? item.poster : null;
     }
 
@@ -726,7 +732,12 @@ public class HomeActivity extends AppCompatActivity {
 
     private String getDetailAtmospherePath(PlayInfoResponse info, PlayListItem item) {
         String backdrop = getDetailBackdropPath(info);
-        return backdrop != null && !backdrop.isEmpty() ? backdrop : getDetailPosterPath(info, item);
+        if (backdrop != null && !backdrop.isEmpty()) return backdrop;
+        if (info != null && info.item != null
+                && info.item.stillPath != null && !info.item.stillPath.isEmpty()) {
+            return info.item.stillPath;
+        }
+        return getDetailPosterPath(info, item);
     }
 
     private String getEpisodeStillPath(PlayListItem episode) {
@@ -894,18 +905,16 @@ public class HomeActivity extends AppCompatActivity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
-        content.setPadding(14, 0, 14, 20);
+        final boolean optimizedDetailLayout = shouldUseOptimizedDetailLayout();
+        final boolean wideDetailLayout = shouldUseWideDetailLayout();
+        int contentPad = optimizedDetailLayout ? dp(wideDetailLayout ? 54 : 28) : 14;
+        content.setPadding(contentPad, 0, contentPad, optimizedDetailLayout ? dp(28) : 20);
 
-        // 海报（优先用 backdrops 背景大图，没有则用 poster）
-        String backdropPath = info.getBackdropPath();
-        String posterPath = backdropPath;
-        if (posterPath == null || (info.item != null && info.item.backdrops == null)) {
-            posterPath = info.getPosterPath();
-        }
-        if (posterPath == null) posterPath = item.poster;
+        String posterPath = getDetailPosterPath(info, item);
+        String atmospherePath = getDetailAtmospherePath(info, item);
         RoundedImageView poster = new RoundedImageView(this);
         poster.setAdjustViewBounds(false);
-        poster.setScaleType(backdropPath != null ? ImageView.ScaleType.CENTER_CROP : ImageView.ScaleType.FIT_CENTER);
+        poster.setScaleType(ImageView.ScaleType.FIT_CENTER);
         poster.setBackgroundColor(0xFF2A2A2A);
         poster.setCornerRadius(10);
         String pUrl = makePosterUrl(posterPath);
@@ -922,6 +931,10 @@ public class HomeActivity extends AppCompatActivity {
         metaCard.setOrientation(LinearLayout.VERTICAL);
         metaCard.setBackgroundResource(R.drawable.bg_card);
         metaCard.setPadding(16, 16, 16, 16);
+        if (optimizedDetailLayout) {
+            metaCard.setBackgroundColor(Color.TRANSPARENT);
+            metaCard.setPadding(0, 0, 0, 0);
+        }
 
         String typeStr = info.type != null ? info.type : item.type;
         String typeLabel = "电影";
@@ -953,8 +966,12 @@ public class HomeActivity extends AppCompatActivity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         titleBig.setText(bigTitle.trim());
         titleBig.setTextColor(0xFFFFFFFF);
-        titleBig.setTextSize(22);
+        titleBig.setTextSize(optimizedDetailLayout ? (wideDetailLayout ? 42 : 30) : 22);
         titleBig.setTypeface(Typeface.DEFAULT_BOLD);
+        if (optimizedDetailLayout) {
+            titleBig.setMaxLines(wideDetailLayout ? 1 : 2);
+            titleBig.setEllipsize(TextUtils.TruncateAt.END);
+        }
         metaCard.addView(titleBig);
 
         // 元数据行
@@ -998,26 +1015,29 @@ public class HomeActivity extends AppCompatActivity {
 
         meta.setText(mt.toString());
         meta.setTextColor(0xFFB0B0B0);
-        meta.setTextSize(13);
+        meta.setTextSize(optimizedDetailLayout ? 15 : 13);
+        if (optimizedDetailLayout) {
+            meta.setMaxLines(2);
+            meta.setEllipsize(TextUtils.TruncateAt.END);
+        }
         metaCard.addView(meta);
 
         // 简介卡片
         String overview = info.item != null && info.item.overview != null
                 ? info.item.overview : item.overview;
         LinearLayout overviewCard = null;
+        TextView optimizedOverview = null;
         if (overview != null && !overview.isEmpty()) {
-            if (shouldUseOptimizedDetailLayout()) {
-                TextView ovSummary = new TextView(this);
-                ovSummary.setLayoutParams(new LinearLayout.LayoutParams(
+            if (optimizedDetailLayout) {
+                optimizedOverview = new TextView(this);
+                optimizedOverview.setLayoutParams(new LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-                ovSummary.setPadding(0, 10, 0, 0);
-                ovSummary.setText(overview);
-                ovSummary.setTextColor(0xFFCCCCCC);
-                ovSummary.setTextSize(13);
-                ovSummary.setLineSpacing(4, 1);
-                ovSummary.setMaxLines(4);
-                ovSummary.setEllipsize(TextUtils.TruncateAt.END);
-                metaCard.addView(ovSummary);
+                optimizedOverview.setText(overview);
+                optimizedOverview.setTextColor(0xFFD0D0D0);
+                optimizedOverview.setTextSize(wideDetailLayout ? 16 : 15);
+                optimizedOverview.setLineSpacing(dp(4), 1);
+                optimizedOverview.setMaxLines(wideDetailLayout ? 2 : 3);
+                optimizedOverview.setEllipsize(TextUtils.TruncateAt.END);
             }
 
             overviewCard = new LinearLayout(this);
@@ -1160,39 +1180,12 @@ public class HomeActivity extends AppCompatActivity {
         });
         playFrame.addView(playBtn);
 
-        if (shouldUseOptimizedDetailLayout()) {
-            int screenW = getResources().getDisplayMetrics().widthPixels;
-            boolean compactDetail = screenW < 800;
-            int posterW = backdropPath != null ? 440 : 270;
-            int posterH = backdropPath != null ? 248 : 390;
-            if (compactDetail) {
-                posterW = ViewGroup.LayoutParams.MATCH_PARENT;
-                posterH = backdropPath != null ? 220 : 320;
+        if (optimizedDetailLayout) {
+            if (wideDetailLayout) {
+                addFnWideDetailHero(content, poster, metaCard, playFrame, optimizedOverview, atmospherePath);
+            } else {
+                addFnCompactDetailHero(content, poster, metaCard, playFrame, optimizedOverview, atmospherePath);
             }
-            poster.setLayoutParams(new LinearLayout.LayoutParams(posterW, posterH));
-
-            LinearLayout hero = new LinearLayout(this);
-            hero.setLayoutParams(new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-            hero.setOrientation(compactDetail ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
-            hero.setBaselineAligned(false);
-
-            LinearLayout side = new LinearLayout(this);
-            LinearLayout.LayoutParams sideLp = new LinearLayout.LayoutParams(
-                    compactDetail ? ViewGroup.LayoutParams.MATCH_PARENT : 0,
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    compactDetail ? 0 : 1);
-            if (compactDetail) sideLp.setMargins(0, 12, 0, 0);
-            else sideLp.setMargins(14, 0, 0, 0);
-            side.setLayoutParams(sideLp);
-            side.setOrientation(LinearLayout.VERTICAL);
-
-            side.addView(metaCard);
-            side.addView(makeSpacer(10));
-            side.addView(playFrame);
-            hero.addView(poster);
-            hero.addView(side);
-            content.addView(hero);
         } else {
             poster.setLayoutParams(new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -1204,11 +1197,11 @@ public class HomeActivity extends AppCompatActivity {
             content.addView(makeSpacer(12));
         }
 
-        if (overviewCard != null) {
+        if (overviewCard != null && !optimizedDetailLayout) {
             content.addView(makeSpacer(12));
             content.addView(overviewCard);
         }
-        if (!shouldUseOptimizedDetailLayout()) {
+        if (!optimizedDetailLayout) {
             content.addView(makeSpacer(12));
             content.addView(playFrame);
         }
@@ -1222,7 +1215,127 @@ public class HomeActivity extends AppCompatActivity {
 
         scrollView.addView(content);
         moviesContainer.addView(scrollView);
-        if (shouldUseOptimizedDetailLayout()) playBtn.post(() -> playBtn.requestFocus());
+        if (optimizedDetailLayout) playBtn.post(() -> playBtn.requestFocus());
+    }
+
+    private void addFnWideDetailHero(LinearLayout content, RoundedImageView poster,
+                                     LinearLayout metaCard, FrameLayout playFrame,
+                                     TextView overview, String atmospherePath) {
+        FrameLayout hero = new FrameLayout(this);
+        hero.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(390)));
+        addDetailAtmosphere(hero, atmospherePath);
+
+        LinearLayout row = new LinearLayout(this);
+        row.setLayoutParams(new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setBaselineAligned(false);
+
+        poster.setLayoutParams(new LinearLayout.LayoutParams(dp(220), dp(330)));
+        poster.setAdjustViewBounds(false);
+        poster.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        row.addView(poster);
+
+        LinearLayout side = new LinearLayout(this);
+        LinearLayout.LayoutParams sideLp = new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+        sideLp.setMargins(dp(40), 0, 0, 0);
+        side.setLayoutParams(sideLp);
+        side.setOrientation(LinearLayout.VERTICAL);
+        side.addView(metaCard);
+
+        LinearLayout.LayoutParams playLp = new LinearLayout.LayoutParams(dp(300), dp(64));
+        playLp.setMargins(0, dp(24), 0, 0);
+        playFrame.setLayoutParams(playLp);
+        playFrame.setMinimumHeight(dp(64));
+        side.addView(playFrame);
+
+        if (overview != null) {
+            LinearLayout.LayoutParams overviewLp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            overviewLp.setMargins(0, dp(20), 0, 0);
+            overview.setLayoutParams(overviewLp);
+            side.addView(overview);
+        }
+
+        hero.addView(row);
+        content.addView(hero);
+    }
+
+    private void addFnCompactDetailHero(LinearLayout content, RoundedImageView poster,
+                                        LinearLayout metaCard, FrameLayout playFrame,
+                                        TextView overview, String atmospherePath) {
+        FrameLayout hero = new FrameLayout(this);
+        hero.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        addDetailAtmosphere(hero, atmospherePath);
+
+        LinearLayout body = new LinearLayout(this);
+        body.setLayoutParams(new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        body.setOrientation(LinearLayout.VERTICAL);
+        body.setPadding(0, dp(24), 0, dp(24));
+
+        LinearLayout top = new LinearLayout(this);
+        top.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        top.setOrientation(LinearLayout.HORIZONTAL);
+        top.setBaselineAligned(false);
+
+        poster.setLayoutParams(new LinearLayout.LayoutParams(dp(168), dp(250)));
+        poster.setAdjustViewBounds(false);
+        poster.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        top.addView(poster);
+
+        LinearLayout.LayoutParams metaLp = new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+        metaLp.setMargins(dp(22), dp(20), 0, 0);
+        metaCard.setLayoutParams(metaLp);
+        top.addView(metaCard);
+        body.addView(top);
+
+        LinearLayout.LayoutParams playLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(64));
+        playLp.setMargins(0, dp(24), 0, 0);
+        playFrame.setLayoutParams(playLp);
+        playFrame.setMinimumHeight(dp(64));
+        body.addView(playFrame);
+
+        if (overview != null) {
+            LinearLayout.LayoutParams overviewLp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            overviewLp.setMargins(0, dp(22), 0, 0);
+            overview.setLayoutParams(overviewLp);
+            body.addView(overview);
+        }
+
+        hero.addView(body);
+        content.addView(hero);
+    }
+
+    private void addDetailAtmosphere(FrameLayout hero, String path) {
+        if (path != null && !path.isEmpty()) {
+            ImageView bg = new ImageView(this);
+            bg.setLayoutParams(new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            bg.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            bg.setAlpha(0.34f);
+            String bgUrl = makePosterUrl(path);
+            if (bgUrl != null) {
+                bg.setTag(bgUrl);
+                new Handler(Looper.getMainLooper()).post(() ->
+                        SimpleImageLoader.load(bgUrl, bg, apiManager.getClient()));
+            }
+            hero.addView(bg);
+        }
+
+        View shade = new View(this);
+        shade.setLayoutParams(new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        shade.setBackgroundColor(0xAA202123);
+        hero.addView(shade);
     }
 
     /** 加载剧集列表并按季分组 */
@@ -1256,6 +1369,11 @@ public class HomeActivity extends AppCompatActivity {
 
     /** 显示季列表 */
     private void showSeasons(LinearLayout content, List<PlayListItem> episodes, PlayListItem item) {
+        if (isOptimizedUi()) {
+            showOptimizedEpisodesRail(content, episodes, item);
+            return;
+        }
+
         Map<Integer, List<PlayListItem>> map = new HashMap<>();
         for (PlayListItem ep : episodes) {
             int sn = ep.seasonNumber > 0 ? ep.seasonNumber : 1;
@@ -1305,6 +1423,157 @@ public class HomeActivity extends AppCompatActivity {
             content.addView(card);
             content.addView(makeSpacer(6));
         }
+    }
+
+    private void showOptimizedEpisodesRail(LinearLayout content, List<PlayListItem> episodes, PlayListItem item) {
+        if (episodes == null || episodes.isEmpty()) return;
+        final boolean wide = shouldUseWideDetailLayout();
+
+        List<PlayListItem> sorted = new ArrayList<>(episodes);
+        java.util.Collections.sort(sorted, (a, b) -> {
+            int as = a.seasonNumber > 0 ? a.seasonNumber : 1;
+            int bs = b.seasonNumber > 0 ? b.seasonNumber : 1;
+            if (as != bs) return as - bs;
+            return a.episodeNumber - b.episodeNumber;
+        });
+
+        LinearLayout header = new LinearLayout(this);
+        header.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        header.setPadding(0, dp(wide ? 22 : 18), 0, dp(10));
+
+        TextView title = new TextView(this);
+        title.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        title.setText("选集");
+        title.setTextColor(0xFFFFFFFF);
+        title.setTextSize(wide ? 24 : 22);
+        title.setTypeface(Typeface.DEFAULT_BOLD);
+        header.addView(title);
+
+        TextView count = new TextView(this);
+        count.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        count.setText("共 " + sorted.size() + " >");
+        count.setTextColor(0xFFDDDDDD);
+        count.setTextSize(wide ? 18 : 16);
+        header.addView(count);
+        content.addView(header);
+
+        HorizontalScrollView scroller = new HorizontalScrollView(this);
+        scroller.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        scroller.setHorizontalScrollBarEnabled(false);
+
+        LinearLayout rail = new LinearLayout(this);
+        rail.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        rail.setOrientation(LinearLayout.HORIZONTAL);
+
+        for (PlayListItem ep : sorted) {
+            boolean current = ep.guid != null && ep.guid.equals(item.guid);
+            View card = makeOptimizedEpisodeCard(ep, current, wide);
+            rail.addView(card);
+        }
+        scroller.addView(rail);
+        content.addView(scroller);
+    }
+
+    private View makeOptimizedEpisodeCard(PlayListItem ep, boolean isCurrent, boolean wide) {
+        LinearLayout card = new LinearLayout(this);
+        int cardW = dp(wide ? 260 : 240);
+        LinearLayout.LayoutParams cardLp = new LinearLayout.LayoutParams(cardW, ViewGroup.LayoutParams.WRAP_CONTENT);
+        cardLp.setMargins(0, 0, dp(wide ? 18 : 14), 0);
+        card.setLayoutParams(cardLp);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setFocusable(true);
+        card.setPadding(dp(3), dp(3), dp(3), dp(3));
+        card.setBackgroundDrawable(makeFocusStrokeDrawable(isCurrent, false));
+
+        FrameLayout thumbFrame = new FrameLayout(this);
+        thumbFrame.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(wide ? 146 : 135)));
+
+        RoundedImageView thumb = new RoundedImageView(this);
+        thumb.setLayoutParams(new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        thumb.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        thumb.setBackgroundColor(0xFF2A2A2A);
+        thumb.setCornerRadius(8);
+        String imgUrl = makePosterUrl(getEpisodeStillPath(ep));
+        if (imgUrl != null) {
+            thumb.setTag(imgUrl);
+            new Handler(Looper.getMainLooper()).post(() ->
+                    SimpleImageLoader.load(imgUrl, thumb, apiManager.getClient()));
+        }
+        thumbFrame.addView(thumb);
+
+        if (isCurrent || ep.ts > 0) {
+            int progress = ep.duration > 0 ? (int) Math.max(0, Math.min(100, ep.ts * 100 / ep.duration)) : 45;
+            LinearLayout progressLayer = new LinearLayout(this);
+            progressLayer.setLayoutParams(new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(4), Gravity.BOTTOM));
+            progressLayer.setOrientation(LinearLayout.HORIZONTAL);
+            progressLayer.setWeightSum(100);
+            View fill = new View(this);
+            fill.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, progress));
+            fill.setBackgroundColor(0xFF2D6CDF);
+            progressLayer.addView(fill);
+            View rest = new View(this);
+            rest.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 100 - progress));
+            rest.setBackgroundColor(0x00000000);
+            progressLayer.addView(rest);
+            thumbFrame.addView(progressLayer);
+        }
+
+        TextView title = new TextView(this);
+        title.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        title.setPadding(0, dp(8), 0, 0);
+        title.setText((ep.episodeNumber > 0 ? ep.episodeNumber + "." : "") + (ep.title != null ? ep.title : "未知"));
+        title.setTextColor(isCurrent ? 0xFFFFFFFF : 0xFFEEEEEE);
+        title.setTextSize(wide ? 17 : 16);
+        title.setSingleLine(true);
+        title.setEllipsize(TextUtils.TruncateAt.END);
+
+        TextView duration = new TextView(this);
+        duration.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        duration.setPadding(0, dp(4), 0, 0);
+        duration.setText(ep.duration > 0 ? formatDuration(ep.duration) : "");
+        duration.setTextColor(0xFF9E9E9E);
+        duration.setTextSize(13);
+
+        final String eg = ep.guid;
+        final String et = ep.title;
+        final String eTV = ep.tvTitle != null ? ep.tvTitle : "";
+        final int eEp = ep.episodeNumber;
+        final String epPo = ep.poster;
+        final String epCa = ep.getCategoryLabel();
+        final long epTs = ep.ts > 0 ? ep.ts : 0;
+        final long epDu = ep.duration;
+        final String epPG = ep.parentGuid;
+        card.setOnClickListener(v -> launchPlayer(eg, et, eTV, eEp, epPo, epCa, epTs, epDu, epPG));
+        card.setOnFocusChangeListener((v, hasFocus) -> {
+            v.setScaleX(hasFocus ? 1.04f : 1.0f);
+            v.setScaleY(hasFocus ? 1.04f : 1.0f);
+            v.setBackgroundDrawable(makeFocusStrokeDrawable(isCurrent, hasFocus));
+        });
+
+        card.addView(thumbFrame);
+        card.addView(title);
+        card.addView(duration);
+        return card;
+    }
+
+    private android.graphics.drawable.GradientDrawable makeFocusStrokeDrawable(boolean selected, boolean focused) {
+        android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
+        bg.setColor(0x00000000);
+        bg.setCornerRadius(dp(10));
+        if (focused) bg.setStroke(dp(3), 0xFFFFFFFF);
+        else if (selected) bg.setStroke(dp(2), 0xFF2D6CDF);
+        return bg;
     }
 
     /** 显示某季剧集 */
@@ -2016,6 +2285,10 @@ public class HomeActivity extends AppCompatActivity {
         v.setLayoutParams(new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, h));
         return v;
+    }
+
+    private int dp(int value) {
+        return (int) (value * getResources().getDisplayMetrics().density + 0.5f);
     }
 
     private String formatDuration(long sec) {
